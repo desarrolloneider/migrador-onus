@@ -1,0 +1,7 @@
+# pnpm 11 exige decidir qué dependencias pueden correr scripts al instalarse. Ninguna lo necesita: sus binarios
+# llegan como dependencias opcionales por plataforma. Igual que en marca-blanca.
+allowBuilds:
+  '@parcel/watcher': false
+  esbuild: false
+  lmdb: false
+  msgpackr-extract: false

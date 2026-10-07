@@ -1,0 +1,76 @@
+# Stack completo del monorepo. Lee las claves de .env (copiar .env.example).
+#
+#   docker compose up -d postgres         solo la base, para desarrollar el backend desde el IDE
+#   docker compose up -d --build          todo: base, proceso web, proceso ejecutor y frontend en http://127.0.0.1:4200
+#
+# Todos los puertos quedan solo en 127.0.0.1 (arquitectura 11.1).
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_SUPERUSER_PASSWORD:?Falta POSTGRES_SUPERUSER_PASSWORD en .env}
+      MIGRADOR_OWNER_PASSWORD: ${DATABASE_OWNER_PASSWORD:?Falta DATABASE_OWNER_PASSWORD en .env}
+      MIGRADOR_APP_PASSWORD: ${DATABASE_APP_PASSWORD:?Falta DATABASE_APP_PASSWORD en .env}
+    ports:
+      - "127.0.0.1:${MIGRADOR_PUERTO_BD:-5433}:5432"
+    volumes:
+      - migrador-pg:/var/lib/postgresql/data
+      - ./docs/base-datos/inicializar-roles.sh:/docker-entrypoint-initdb.d/01-inicializar-roles.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d migrador"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend-web:
+    build:
+      context: ./backend
+      target: web
+    env_file: .env
+    environment:
+      DATABASE_URL: jdbc:postgresql://postgres:5432/migrador
+      AUDITORIA_ANCLAS_DIR: /var/lib/migrador/anclas
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${MIGRADOR_PUERTO_WEB:-8090}:8080"
+    volumes:
+      - migrador-anclas:/var/lib/migrador/anclas
+    healthcheck:
+      # /dev/tcp es de bash: la imagen no trae curl ni wget.
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /actuator/health HTTP/1.0\\r\\n\\r\\n' >&3 && grep -q UP <&3"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  backend-worker:
+    build:
+      context: ./backend
+      target: worker
+    env_file: .env
+    environment:
+      DATABASE_URL: jdbc:postgresql://postgres:5432/migrador
+      AUDITORIA_ANCLAS_DIR: /var/lib/migrador/anclas
+    depends_on:
+      backend-web:
+        condition: service_healthy
+    # Un solo proceso ejecutor (RN-40): no escalar este servicio.
+    volumes:
+      - migrador-anclas:/var/lib/migrador/anclas
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+    environment:
+      BACKEND_URL: http://backend-web:8080
+    depends_on:
+      backend-web:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:4200:80"
+
+volumes:
+  migrador-pg:
+  migrador-anclas:

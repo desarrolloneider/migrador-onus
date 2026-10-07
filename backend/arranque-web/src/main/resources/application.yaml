@@ -1,0 +1,57 @@
+# Proceso web. Las variables salen del entorno o del archivo .env en la carpeta desde donde se arranca
+# (copiar .env.example). Si falta una, la aplicación no arranca.
+spring:
+  application:
+    name: migrador-web
+  autoconfigure:
+    # La autenticación es propia (módulo acceso): sin el usuario y la contraseña que Spring genera por defecto.
+    exclude: org.springframework.boot.security.autoconfigure.UserDetailsServiceAutoConfiguration
+  config:
+    # .env en la carpeta desde donde se arranca o en la raíz del monorepo.
+    import: optional:file:.env[.properties],optional:file:../.env[.properties]
+  datasource:
+    url: ${DATABASE_URL}
+    username: ${DATABASE_APP_USER}
+    password: ${DATABASE_APP_PASSWORD}
+  liquibase:
+    # Solo el proceso web aplica migraciones, con el usuario dueño del esquema (arquitectura 10.2 y 11.1).
+    change-log: classpath:db/changelog/db.changelog-master.yaml
+    user: ${DATABASE_OWNER_USER}
+    password: ${DATABASE_OWNER_PASSWORD}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+  lifecycle:
+    timeout-per-shutdown-phase: 5m
+
+server:
+  # Pruebas en Windows: solo 127.0.0.1. Producción: detrás de nginx con TLS (arquitectura 11.1).
+  address: ${SERVER_ADDRESS:127.0.0.1}
+  port: ${SERVER_PORT:8080}
+  shutdown: graceful
+  servlet:
+    session:
+      # La duración real la fija la política de acceso al iniciar sesión (inactividad_sesion_minutos).
+      timeout: 30m
+      cookie:
+        name: MIGRADOR_SESION
+        http-only: true
+        same-site: strict
+        secure: ${SESSION_COOKIE_SECURE:false}
+
+migrador:
+  auditoria:
+    anclas:
+      # Mismo directorio que el ejecutor (arquitectura 10.2). La web solo lo lee al verificar.
+      directorio: ${AUDITORIA_ANCLAS_DIR:anclas}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

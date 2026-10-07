@@ -1,0 +1,25 @@
+# Proceso ejecutor. Mismas variables que la web; no aplica migraciones ni sirve pantallas.
+spring:
+  application:
+    name: migrador-worker
+  config:
+    # .env en la carpeta desde donde se arranca o en la raíz del monorepo.
+    import: optional:file:.env[.properties],optional:file:../.env[.properties]
+  main:
+    web-application-type: none
+    keep-alive: true
+  datasource:
+    url: ${DATABASE_URL}
+    username: ${DATABASE_APP_USER}
+    password: ${DATABASE_APP_PASSWORD}
+  lifecycle:
+    # Parada ordenada (RN-38): no toma ONUs nuevas y espera la que está en curso hasta 5 minutos.
+    timeout-per-shutdown-phase: 5m
+
+migrador:
+  auditoria:
+    anclas:
+      # Mismo directorio que la web: la web lo lee al verificar y el ejecutor, único, es quien escribe.
+      directorio: ${AUDITORIA_ANCLAS_DIR:anclas}
+      programadas: true
+      cron: "0 0 5 * * *"

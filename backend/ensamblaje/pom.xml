@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.guajiranet.migradoronu</groupId>
+        <artifactId>migrador-onu</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>ensamblaje</artifactId>
+    <name>ensamblaje</name>
+    <description>Une los módulos: aquí viven todos los ...ModuleAdapter, que implementan el puerto de salida de un módulo llamando al puerto de entrada de otro. Es el único que conoce a todos (corrección 2a).</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.guajiranet.migradoronu</groupId>
+            <artifactId>comun</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.guajiranet.migradoronu</groupId>
+            <artifactId>procedimientos</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.guajiranet.migradoronu</groupId>
+            <artifactId>conciliacion</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.guajiranet.migradoronu</groupId>
+            <artifactId>lotes</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.guajiranet.migradoronu</groupId>
+            <artifactId>ejecucion</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.guajiranet.migradoronu</groupId>
+            <artifactId>auditoria</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.guajiranet.migradoronu</groupId>
+            <artifactId>acceso</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.guajiranet.migradoronu</groupId>
+            <artifactId>configuracion</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-context</artifactId>
+        </dependency>
+
+        <!-- Prueba del esquema completo (Liquibase) contra PostgreSQL 17 real. Se salta si Docker no está corriendo. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-jdbc</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-liquibase</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-testcontainers</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers-postgresql</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers-junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

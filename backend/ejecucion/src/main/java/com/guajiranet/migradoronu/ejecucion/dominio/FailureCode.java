@@ -1,0 +1,17 @@
+package com.guajiranet.migradoronu.ejecucion.dominio;
+
+/** Catálogo de motivos de fallo (spec 8.3). */
+public enum FailureCode {
+    FALLO_OLT_SIN_ACCESO,
+    FALLO_OLT_RECHAZO,
+    FALLO_VERIFICACION,
+    FALLO_SIN_PERFIL,
+    FALLO_NO_GUARDADO,
+    FALLO_FOTO_PREVIA,
+    FALLO_SISTEMA_NO_RESPONDE,
+    FALLO_CREDENCIALES,
+    FALLO_RESPUESTA_NO_RECONOCIDA,
+    FALLO_ONU_DESAPARECIO,
+    FALLO_PERDIO_EXCLUSIVIDAD,
+    FALLO_INTERRUMPIDA
+}

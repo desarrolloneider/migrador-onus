@@ -1,0 +1,613 @@
+openapi: 3.1.0
+info:
+  title: Migrador de ONUs a GenieACS · API
+  version: 0.1.0
+  description: |
+    Contrato entre el frontend (Angular) y el proceso web (Spring Boot). Se escribe antes que el código (convención
+    del conjunto de Contact Center, arquitectura 7.2) y es la fuente de los modelos del frontend
+    (`frontend/src/app/features/*/models`) y de los controladores del backend.
+
+    - Sesión en el servidor con cookie HttpOnly. Las órdenes que cambian estado llevan el token CSRF en
+      `X-XSRF-TOKEN` (cookie `XSRF-TOKEN`) y una `Idempotency-Key` (RN-24).
+    - Los errores siguen Problem Details (RFC 9457). El campo `detail` trae el mensaje de la spec, listo para mostrar
+      (RN-20): ningún error técnico llega crudo a la pantalla.
+    - Las fechas van en UTC (ISO 8601); la pantalla las muestra en hora de Colombia (RN-21).
+    - Tiempo real: WebSocket con STOMP en `/ws`, tópicos `/topic/lote:{id}`, `/topic/onu-run:{id}`,
+      `/topic/armado:{usuario}` y `/topic/sistema`. Cada aviso es un `EventoEnVivo`; la pantalla vuelve a pedir los datos.
+servers:
+  - url: /api/v1
+tags:
+  - name: Acceso
+  - name: Sistema
+  - name: Lotes
+  - name: Ejecuciones
+  - name: Historial
+  - name: Auditoría
+  - name: Configuración
+
+paths:
+  /auth/login:
+    post:
+      tags: [Acceso]
+      summary: Iniciar sesión (ESP-01)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+      responses:
+        '200': { description: Sesión abierta, content: { application/json: { schema: { $ref: '#/components/schemas/UsuarioSesion' } } } }
+        '401': { $ref: '#/components/responses/Problema' }
+        '423': { description: Usuario bloqueado por intentos fallidos, content: { application/problem+json: { schema: { $ref: '#/components/schemas/Problema' } } } }
+  /auth/logout:
+    post:
+      tags: [Acceso]
+      summary: Cerrar sesión. Los lotes siguen corriendo.
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      responses:
+        '204': { description: Sesión cerrada }
+  /auth/sesion:
+    get:
+      tags: [Acceso]
+      summary: Usuario de la sesión actual
+      responses:
+        '200': { description: Sesión vigente, content: { application/json: { schema: { $ref: '#/components/schemas/UsuarioSesion' } } } }
+        '401': { $ref: '#/components/responses/Problema' }
+
+  /system/status:
+    get:
+      tags: [Sistema]
+      summary: Estado del proceso ejecutor y contadores generales (arquitectura 9.1)
+      responses:
+        '200': { description: Estado, content: { application/json: { schema: { $ref: '#/components/schemas/EstadoSistema' } } } }
+
+  /batches:
+    get:
+      tags: [Lotes]
+      summary: Lotes recientes (inicio)
+      parameters:
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+      responses:
+        '200': { description: Lotes, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Lote' } } } } }
+  /batches/preview:
+    post:
+      tags: [Lotes]
+      summary: Armar la vista previa de un lote (ESP-03, ESP-04)
+      description: El avance se publica en `/topic/armado:{usuario}`. Si una descarga queda incompleta no se crea nada (RN-39).
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ArmarLoteRequest' }
+      responses:
+        '201': { description: Vista previa armada, content: { application/json: { schema: { $ref: '#/components/schemas/VistaPrevia' } } } }
+        '422': { $ref: '#/components/responses/Problema' }
+        '502': { description: SmartOLT o Wispro no respondió o la descarga quedó incompleta, content: { application/problem+json: { schema: { $ref: '#/components/schemas/Problema' } } } }
+  /batches/single-preview:
+    post:
+      tags: [Lotes]
+      summary: Vista previa de una sola ONU por su SN (ESP-10)
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sn]
+              properties: { sn: { type: string, examples: [HWTC1A2B3C4D, 48575443ABCDEF01] } }
+      responses:
+        '201': { description: Vista previa de una ONU, content: { application/json: { schema: { $ref: '#/components/schemas/VistaPrevia' } } } }
+        '404': { $ref: '#/components/responses/Problema' }
+  /batches/{id}:
+    get:
+      tags: [Lotes]
+      summary: Un lote con sus contadores
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { description: Lote, content: { application/json: { schema: { $ref: '#/components/schemas/Lote' } } } }
+        '404': { $ref: '#/components/responses/Problema' }
+  /batches/{id}/preview:
+    get:
+      tags: [Lotes]
+      summary: La vista previa de un lote, con sus tres grupos
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { description: Vista previa, content: { application/json: { schema: { $ref: '#/components/schemas/VistaPrevia' } } } }
+  /batches/{id}/export:
+    get:
+      tags: [Lotes]
+      summary: Exportar la vista previa (queda registrada como VISTA_PREVIA_EXPORTADA, RNF-15)
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { description: Hoja de cálculo, content: { text/csv: { schema: { type: string } } } }
+  /batches/{id}/confirm:
+    post:
+      tags: [Lotes]
+      summary: Confirmar o simular (ESP-05, ESP-11)
+      description: |
+        409 si la vista previa venció o se descartó, si la configuración cambió desde que se armó (RN-36), o si se pide
+        ejecución real sin haber decidido PC-36 (DEC-34). Confirmar dos veces ejecuta una sola vez (RN-24).
+      parameters: [{ $ref: '#/components/parameters/Id' }, { $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [simulacion]
+              properties: { simulacion: { type: boolean } }
+      responses:
+        '200': { description: Lote confirmado, content: { application/json: { schema: { $ref: '#/components/schemas/Lote' } } } }
+        '409': { $ref: '#/components/responses/Problema' }
+  /batches/{id}/discard:
+    post:
+      tags: [Lotes]
+      summary: Descartar la vista previa. No se borra nada.
+      parameters: [{ $ref: '#/components/parameters/Id' }, { $ref: '#/components/parameters/IdempotencyKey' }]
+      responses:
+        '200': { description: Lote descartado, content: { application/json: { schema: { $ref: '#/components/schemas/Lote' } } } }
+  /batches/{id}/stop:
+    post:
+      tags: [Lotes]
+      summary: Detener el lote (ESP-12). La ONU en curso termina o falla y no empieza ninguna más.
+      parameters: [{ $ref: '#/components/parameters/Id' }, { $ref: '#/components/parameters/IdempotencyKey' }]
+      responses:
+        '200': { description: Lote deteniéndose o detenido, content: { application/json: { schema: { $ref: '#/components/schemas/Lote' } } } }
+        '409': { $ref: '#/components/responses/Problema' }
+  /batches/{id}/runs:
+    get:
+      tags: [Lotes]
+      summary: Las ONUs del lote, para la pantalla en vivo (ESP-08)
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { description: Ejecuciones, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/EjecucionOnu' } } } } }
+
+  /onu-runs/failed:
+    get:
+      tags: [Ejecuciones]
+      summary: Fallidas sin revisar (ESP-14)
+      responses:
+        '200': { description: Fallidas, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/EjecucionOnu' } } } } }
+  /onu-runs/{id}:
+    get:
+      tags: [Ejecuciones]
+      summary: Detalle de una ONU con línea de tiempo y los 8 pasos (ESP-09)
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { description: Detalle, content: { application/json: { schema: { $ref: '#/components/schemas/DetalleEjecucion' } } } }
+  /onu-runs/{id}/review:
+    post:
+      tags: [Ejecuciones]
+      summary: Marcar una fallida como revisada, con nota de mínimo 10 caracteres (RN-26)
+      parameters: [{ $ref: '#/components/parameters/Id' }, { $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [nota]
+              properties: { nota: { type: string, minLength: 10 } }
+      responses:
+        '200': { description: Revisada, content: { application/json: { schema: { $ref: '#/components/schemas/DetalleEjecucion' } } } }
+        '422': { $ref: '#/components/responses/Problema' }
+
+  /onu-history:
+    get:
+      tags: [Historial]
+      summary: Historial de ONUs con totales (ESP-17)
+      parameters:
+        - $ref: '#/components/parameters/FiltroSn'
+        - { name: olt, in: query, schema: { type: string } }
+        - { name: tarjeta, in: query, schema: { type: string } }
+        - { name: resultado, in: query, schema: { $ref: '#/components/schemas/ResultadoHistorial' } }
+        - $ref: '#/components/parameters/Desde'
+        - $ref: '#/components/parameters/Hasta'
+        - $ref: '#/components/parameters/Pagina'
+        - $ref: '#/components/parameters/Tamano'
+      responses:
+        '200': { description: Página, content: { application/json: { schema: { $ref: '#/components/schemas/PaginaHistorial' } } } }
+  /onu-history/export:
+    get:
+      tags: [Historial]
+      summary: Exportar el historial filtrado (HISTORIAL_EXPORTADO)
+      responses:
+        '200': { description: Hoja de cálculo, content: { text/csv: { schema: { type: string } } } }
+  /onu-history/{sn}:
+    get:
+      tags: [Historial]
+      summary: Todos los intentos de una ONU, de todos los lotes
+      parameters:
+        - { name: sn, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Intentos, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/IntentoOnu' } } } } }
+
+  /audit:
+    get:
+      tags: [Auditoría]
+      summary: Buscar en la auditoría (ESP-13)
+      parameters:
+        - $ref: '#/components/parameters/Desde'
+        - $ref: '#/components/parameters/Hasta'
+        - { name: usuario, in: query, schema: { type: string } }
+        - { name: lote, in: query, schema: { type: string } }
+        - $ref: '#/components/parameters/FiltroSn'
+        - { name: sistema, in: query, schema: { type: string } }
+        - { name: paso, in: query, schema: { $ref: '#/components/schemas/CodigoPaso' } }
+        - { name: accion, in: query, schema: { type: string } }
+        - { name: resultado, in: query, schema: { type: string } }
+        - { name: orden, in: query, schema: { type: string, enum: [asc, desc], default: desc } }
+        - $ref: '#/components/parameters/Pagina'
+        - $ref: '#/components/parameters/Tamano'
+      responses:
+        '200': { description: Página, content: { application/json: { schema: { $ref: '#/components/schemas/PaginaAuditoria' } } } }
+  /audit/export:
+    get:
+      tags: [Auditoría]
+      summary: Exportar la auditoría filtrada (AUDITORIA_EXPORTADA)
+      responses:
+        '200': { description: Hoja de cálculo, content: { text/csv: { schema: { type: string } } } }
+  /audit/verify:
+    post:
+      tags: [Auditoría]
+      summary: Verificar la integridad de la cadena y de las anclas (INTEGRIDAD_VERIFICADA o INTEGRIDAD_ROTA)
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      responses:
+        '200': { description: Resultado, content: { application/json: { schema: { $ref: '#/components/schemas/ResultadoIntegridad' } } } }
+
+  /settings:
+    get:
+      tags: [Configuración]
+      summary: Parámetros de la spec 7.5 (ESP-15)
+      responses:
+        '200': { description: Configuración, content: { application/json: { schema: { $ref: '#/components/schemas/Configuracion' } } } }
+  /settings/{clave}:
+    put:
+      tags: [Configuración]
+      summary: Cambiar un parámetro. 409 con un lote en ejecución (RN-28).
+      parameters:
+        - { name: clave, in: path, required: true, schema: { type: string, pattern: '^[a-z_]+$' } }
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [valor]
+              properties: { valor: { type: [string, integer, 'null'] } }
+      responses:
+        '200': { description: Parámetro cambiado, content: { application/json: { schema: { $ref: '#/components/schemas/Parametro' } } } }
+        '409': { $ref: '#/components/responses/Problema' }
+        '422': { $ref: '#/components/responses/Problema' }
+  /olts:
+    get:
+      tags: [Configuración]
+      summary: OLT registradas y sus tarjetas permitidas. Sin credenciales (RN-25).
+      responses:
+        '200': { description: OLT, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Olt' } } } } }
+  /olts/{id}/boards:
+    put:
+      tags: [Configuración]
+      summary: Cambiar las tarjetas permitidas de una OLT (RN-14)
+      parameters: [{ $ref: '#/components/parameters/Id' }, { $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tarjetas]
+              properties: { tarjetas: { type: array, items: { type: string, pattern: '^\d{1,2}/\d{1,2}$' } } }
+      responses:
+        '200': { description: OLT actualizada, content: { application/json: { schema: { $ref: '#/components/schemas/Olt' } } } }
+        '409': { $ref: '#/components/responses/Problema' }
+
+components:
+  parameters:
+    Id: { name: id, in: path, required: true, schema: { type: integer, format: int64 } }
+    IdempotencyKey: { name: Idempotency-Key, in: header, required: true, schema: { type: string, maxLength: 100 } }
+    FiltroSn: { name: sn, in: query, schema: { type: string } }
+    Desde: { name: desde, in: query, description: Fecha en hora de Colombia, schema: { type: string, format: date } }
+    Hasta: { name: hasta, in: query, description: Fecha en hora de Colombia, schema: { type: string, format: date } }
+    Pagina: { name: pagina, in: query, schema: { type: integer, minimum: 0, default: 0 } }
+    Tamano: { name: tamano, in: query, schema: { type: integer, minimum: 1, maximum: 500, default: 50 } }
+  responses:
+    Problema:
+      description: Error con el mensaje de la spec en `detail`
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problema' }
+  schemas:
+    Problema:
+      type: object
+      required: [status, detail]
+      properties:
+        type: { type: string }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string, examples: ['Hay 148 ONUs que cumplen los filtros y el máximo por lote es 50. Usa los filtros para armar lotes más pequeños.'] }
+    LoginRequest:
+      type: object
+      required: [usuario, contrasena]
+      properties: { usuario: { type: string }, contrasena: { type: string, format: password } }
+    UsuarioSesion:
+      type: object
+      required: [id, usuario, nombre]
+      properties: { id: { type: integer, format: int64 }, usuario: { type: string }, nombre: { type: string } }
+    EstadoSistema:
+      type: object
+      required: [ejecutorActivo, fallidasSinRevisar]
+      properties:
+        ejecutorActivo: { type: boolean }
+        ultimoLatido: { type: [string, 'null'], format: date-time }
+        loteEnEjecucion:
+          type: [object, 'null']
+          properties: { id: { type: integer, format: int64 }, numero: { type: string } }
+        fallidasSinRevisar: { type: integer }
+    EventoEnVivo:
+      type: object
+      required: [canal, tipo]
+      properties: { canal: { type: string }, tipo: { type: string }, datos: { type: object } }
+    EstadoLote:
+      type: string
+      enum: [VISTA_PREVIA, CONFIRMADO, EN_EJECUCION, DETENIENDOSE, TERMINADO, TERMINADO_CON_FALLAS, DETENIDO, DESCARTADO]
+    GrupoVistaPrevia: { type: string, enum: [ENTRA, EXCLUIDA, YA_TIENE_PERFIL] }
+    EstadoEjecucion: { type: string, enum: [PENDIENTE, REVALIDANDO, EN_CURSO, COMPLETADA, FALLIDA, EXCLUIDA_AL_EJECUTAR, NO_INICIADA] }
+    EstadoPaso: { type: string, enum: [PENDIENTE, EN_CURSO, CORRECTO, YA_ESTABA, FALLIDO, NO_EJECUTADO, SIMULADO] }
+    CodigoPaso: { type: string, enum: [P01, P02, P03, P04, P05, P06, P07, P08] }
+    ResultadoHistorial: { type: string, enum: [CORREGIDA, FALLIDA, EXCLUIDA, YA_TENIA_PERFIL] }
+    FiltrosLote:
+      type: object
+      required: [marca]
+      properties:
+        marca: { type: string, enum: [HUAWEI] }
+        olt: { type: [string, 'null'] }
+        tarjeta: { type: [string, 'null'], pattern: '^\d{1,2}/\d{1,2}$' }
+        pon: { type: [integer, 'null'], minimum: 0 }
+    ArmarLoteRequest: { $ref: '#/components/schemas/FiltrosLote' }
+    ContadoresLote:
+      type: object
+      properties:
+        entran: { type: integer }
+        excluidas: { type: integer }
+        yaTienenPerfil: { type: integer }
+        pendientes: { type: integer }
+        enCurso: { type: integer }
+        completadas: { type: integer }
+        fallidas: { type: integer }
+        excluidasAlEjecutar: { type: integer }
+        noIniciadas: { type: integer }
+    Lote:
+      type: object
+      required: [id, numero, modo, simulacion, estado, filtros, contadores]
+      properties:
+        id: { type: integer, format: int64 }
+        numero: { type: string, pattern: '^LOT-\d{4}-\d{6}$' }
+        modo: { type: string, enum: [LOTE, INDIVIDUAL] }
+        simulacion: { type: boolean }
+        estado: { $ref: '#/components/schemas/EstadoLote' }
+        filtros: { $ref: '#/components/schemas/FiltrosLote' }
+        creadoPor: { type: string }
+        creadoEn: { type: string, format: date-time }
+        venceEn: { type: string, format: date-time }
+        confirmadoPor: { type: [string, 'null'] }
+        confirmadoEn: { type: [string, 'null'], format: date-time }
+        iniciadoEn: { type: [string, 'null'], format: date-time }
+        terminadoEn: { type: [string, 'null'], format: date-time }
+        motivoDetencion: { type: [string, 'null'] }
+        procedimientoVersion: { type: [string, 'null'] }
+        contadores: { $ref: '#/components/schemas/ContadoresLote' }
+        tiempoEstimadoMaximoMin: { type: integer }
+    RegistroDuplicado:
+      type: object
+      properties: { olt: { type: string }, tarjeta: { type: string }, pon: { type: integer }, onuId: { type: integer }, enLinea: { type: boolean } }
+    ItemVistaPrevia:
+      type: object
+      required: [sn, grupo, olt]
+      properties:
+        sn: { type: string }
+        ip: { type: [string, 'null'] }
+        grupo: { $ref: '#/components/schemas/GrupoVistaPrevia' }
+        codigoMotivo: { type: [string, 'null'], description: Catálogo 8.2 de la spec, examples: [EXC_IP_NO_EN_WISPRO] }
+        mensaje: { type: [string, 'null'] }
+        cliente: { type: [string, 'null'] }
+        contrato: { type: [string, 'null'] }
+        modelo: { type: [string, 'null'] }
+        olt: { type: string }
+        tarjeta: { type: [string, 'null'] }
+        pon: { type: [integer, 'null'] }
+        onuId: { type: [integer, 'null'] }
+        perfilActual: { type: [string, 'null'] }
+        registrosDuplicados: { type: array, items: { $ref: '#/components/schemas/RegistroDuplicado' } }
+    VistaPrevia:
+      type: object
+      required: [lote, items, soloSimulacion]
+      properties:
+        lote: { $ref: '#/components/schemas/Lote' }
+        items: { type: array, items: { $ref: '#/components/schemas/ItemVistaPrevia' } }
+        soloSimulacion: { type: boolean, description: true mientras no se decida PC-36 }
+        motivoSoloSimulacion: { type: [string, 'null'] }
+    EjecucionOnu:
+      type: object
+      required: [id, loteId, sn, estado, orden]
+      properties:
+        id: { type: integer, format: int64 }
+        loteId: { type: integer, format: int64 }
+        loteNumero: { type: string }
+        simulacion: { type: boolean }
+        sn: { type: string }
+        cliente: { type: [string, 'null'] }
+        olt: { type: string }
+        tarjeta: { type: string }
+        pon: { type: integer }
+        onuId: { type: integer }
+        orden: { type: integer }
+        estado: { $ref: '#/components/schemas/EstadoEjecucion' }
+        pasoActual: { oneOf: [{ $ref: '#/components/schemas/CodigoPaso' }, { type: 'null' }] }
+        codigo: { type: [string, 'null'], description: Catálogo 8.3 de la spec o EXC_CAMBIO_AL_EJECUTAR }
+        mensaje: { type: [string, 'null'] }
+        iniciadaEn: { type: [string, 'null'], format: date-time }
+        terminadaEn: { type: [string, 'null'], format: date-time }
+        duracionMs: { type: [integer, 'null'] }
+        revisada: { type: boolean }
+        cambiosAplicados: { type: array, items: { type: string } }
+    PasoEjecucion:
+      type: object
+      properties:
+        paso: { $ref: '#/components/schemas/CodigoPaso' }
+        nombre: { type: string }
+        estado: { $ref: '#/components/schemas/EstadoPaso' }
+        iniciadoEn: { type: [string, 'null'], format: date-time }
+        terminadoEn: { type: [string, 'null'], format: date-time }
+        duracionMs: { type: [integer, 'null'] }
+        comando: { type: [string, 'null'], description: Sin credenciales (RN-25) }
+        respuestaOlt: { type: [string, 'null'] }
+        esperado: { type: [string, 'null'] }
+        encontrado: { type: [string, 'null'] }
+        codigo: { type: [string, 'null'] }
+        mensaje: { type: [string, 'null'] }
+    EventoLineaDeTiempo:
+      type: object
+      properties:
+        hora: { type: string, format: date-time }
+        paso: { oneOf: [{ $ref: '#/components/schemas/CodigoPaso' }, { type: 'null' }] }
+        accion: { type: string }
+        descripcion: { type: string }
+        comando: { type: [string, 'null'] }
+        respuesta: { type: [string, 'null'] }
+        esperado: { type: [string, 'null'] }
+        encontrado: { type: [string, 'null'] }
+        duracionMs: { type: [integer, 'null'] }
+    DetalleEjecucion:
+      allOf:
+        - $ref: '#/components/schemas/EjecucionOnu'
+        - type: object
+          properties:
+            ip: { type: string }
+            modelo: { type: string }
+            contrato: { type: [string, 'null'] }
+            pasos: { type: array, items: { $ref: '#/components/schemas/PasoEjecucion' } }
+            lineaDeTiempo: { type: array, items: { $ref: '#/components/schemas/EventoLineaDeTiempo' } }
+            fotografiaPrevia:
+              type: [object, 'null']
+              properties:
+                tomadaEn: { type: string, format: date-time }
+                perfilTr069: { type: [string, 'null'] }
+                textoOlt: { type: string }
+                datosSmartOlt: { type: object, additionalProperties: { type: string } }
+            estadoAlFallar: { type: [string, 'null'] }
+            revision:
+              type: [object, 'null']
+              properties: { por: { type: string }, en: { type: string, format: date-time }, nota: { type: string } }
+    EntradaHistorial:
+      type: object
+      properties:
+        sn: { type: string }
+        ip: { type: [string, 'null'] }
+        olt: { type: string }
+        tarjeta: { type: [string, 'null'] }
+        pon: { type: [integer, 'null'] }
+        onuId: { type: [integer, 'null'] }
+        ultimoResultado: { $ref: '#/components/schemas/ResultadoHistorial' }
+        revisada: { type: [boolean, 'null'] }
+        codigo: { type: [string, 'null'] }
+        motivo: { type: [string, 'null'] }
+        loteId: { type: integer, format: int64 }
+        loteNumero: { type: string }
+        actualizadoEn: { type: string, format: date-time }
+    PaginaHistorial:
+      type: object
+      properties:
+        entradas: { type: array, items: { $ref: '#/components/schemas/EntradaHistorial' } }
+        total: { type: integer }
+        pagina: { type: integer }
+        tamano: { type: integer }
+        totales:
+          type: object
+          properties: { CORREGIDA: { type: integer }, FALLIDA: { type: integer }, EXCLUIDA: { type: integer }, YA_TENIA_PERFIL: { type: integer } }
+    IntentoOnu:
+      type: object
+      properties:
+        ejecucionId: { type: [integer, 'null'], format: int64 }
+        loteId: { type: integer, format: int64 }
+        loteNumero: { type: string }
+        fecha: { type: string, format: date-time }
+        resultado: { $ref: '#/components/schemas/ResultadoHistorial' }
+        simulacion: { type: boolean }
+        paso: { type: [string, 'null'] }
+        codigo: { type: [string, 'null'] }
+        mensaje: { type: [string, 'null'] }
+    EventoAuditoria:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        ocurridoEn: { type: string, format: date-time }
+        actorTipo: { type: string, enum: [USUARIO, PROCESO_EJECUTOR, CONSOLA] }
+        usuario: { type: [string, 'null'] }
+        ipOrigen: { type: [string, 'null'] }
+        accion: { type: string }
+        loteId: { type: [integer, 'null'], format: int64 }
+        loteNumero: { type: [string, 'null'] }
+        sn: { type: [string, 'null'] }
+        paso: { type: [string, 'null'] }
+        sistema: { type: [string, 'null'] }
+        peticion: { type: object }
+        respuesta: { type: object }
+        resultado: { type: [string, 'null'] }
+        codigo: { type: [string, 'null'] }
+        mensaje: { type: [string, 'null'] }
+        duracionMs: { type: [integer, 'null'] }
+    PaginaAuditoria:
+      type: object
+      properties:
+        eventos: { type: array, items: { $ref: '#/components/schemas/EventoAuditoria' } }
+        total: { type: integer }
+        pagina: { type: integer }
+        tamano: { type: integer }
+    ResultadoIntegridad:
+      type: object
+      required: [intacta, eventosRevisados, mensaje]
+      properties:
+        intacta: { type: boolean }
+        eventosRevisados: { type: integer }
+        primerEventoRoto: { type: [integer, 'null'], format: int64 }
+        motivo: { type: [string, 'null'] }
+        mensaje: { type: string }
+    Parametro:
+      type: object
+      properties:
+        clave: { type: string }
+        nombre: { type: string }
+        grupo: { type: string }
+        valor: { type: [string, integer, 'null'] }
+        unidad: { type: [string, 'null'] }
+        descripcion: { type: string }
+        referencia: { type: string }
+        tipo: { type: string, enum: [ENTERO, TEXTO, OPCION] }
+        opciones:
+          type: [array, 'null']
+          items: { type: object, properties: { valor: { type: string }, etiqueta: { type: string } } }
+        minimo: { type: [integer, 'null'] }
+        maximo: { type: [integer, 'null'] }
+        editable: { type: boolean }
+        actualizadoPor: { type: [string, 'null'] }
+        actualizadoEn: { type: [string, 'null'], format: date-time }
+    Configuracion:
+      type: object
+      properties:
+        parametros: { type: array, items: { $ref: '#/components/schemas/Parametro' } }
+        bloqueadaPorLote: { type: [string, 'null'], description: Número del lote en ejecución (RN-28) }
+    Olt:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        codigo: { type: string }
+        nombre: { type: string }
+        direccion: { type: [string, 'null'] }
+        puerto: { type: [integer, 'null'] }
+        protocolo: { type: [string, 'null'], enum: [SSH, TELNET, null] }
+        tarjetasPermitidas: { type: array, items: { type: string } }
+        accesoConfigurado: { type: boolean }

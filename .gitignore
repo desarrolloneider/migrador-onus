@@ -1,0 +1,30 @@
+# Java / Maven
+backend/**/target/
+*.class
+
+# Node / Angular
+frontend/node_modules/
+frontend/dist/
+frontend/.angular/
+frontend/coverage/
+npm-debug.log*
+pnpm-debug.log*
+
+# Secretos y entorno
+.env
+*.env
+!.env.example
+
+# Anclas de la auditoría fuera de la base (arquitectura 10.2): viven en el servidor, no en git.
+anclas/
+backend/anclas/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.classpath
+.project
+.settings/
+.DS_Store
+*.log

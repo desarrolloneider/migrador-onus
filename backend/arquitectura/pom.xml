@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.guajiranet.migradoronu</groupId>
+        <artifactId>migrador-onu</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>arquitectura</artifactId>
+    <name>arquitectura</name>
+    <description>Solo pruebas: reglas de ArchUnit que hacen cumplir la arquitectura hexagonal y las correcciones 2a y 2b en el pipeline.</description>
+
+    <!-- No produce jar: no hay nada que instalar ni publicar. -->
+    <properties>
+        <maven.install.skip>true</maven.install.skip>
+        <maven.deploy.skip>true</maven.deploy.skip>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.guajiranet.migradoronu</groupId>
+            <artifactId>ensamblaje</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.guajiranet.migradoronu</groupId>
+            <artifactId>integraciones</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.tngtech.archunit</groupId>
+            <artifactId>archunit</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <configuration>
+                    <skipIfEmpty>true</skipIfEmpty>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>

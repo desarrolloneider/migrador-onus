@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>4.1.1</version>
+        <relativePath/>
+    </parent>
+
+    <groupId>com.guajiranet.migradoronu</groupId>
+    <artifactId>migrador-onu</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+    <packaging>pom</packaging>
+
+    <name>Migrador de ONUs a GenieACS</name>
+    <description>Herramienta interna de GuajiraNet: cambia el perfil TR-069 de las ONUs Huawei por comando en la OLT, con verificación de cada paso, historial y auditoría.</description>
+
+    <properties>
+        <!-- Java 25: LTS vigente y la versión más alta que soporta Spring Boot 4.1 (ver docs/adr/0001). -->
+        <java.version>25</java.version>
+        <archunit.version>1.5.1</archunit.version>
+        <!-- Argon2PasswordEncoder de Spring Security la necesita (arquitectura 11.1). -->
+        <bouncycastle.version>1.86</bouncycastle.version>
+    </properties>
+
+    <!-- Orden: primero lo que no depende de nadie. ensamblaje une los módulos (corrección 2a, docs/adr/0002). -->
+    <modules>
+        <module>comun</module>
+        <module>integraciones</module>
+        <module>procedimientos</module>
+        <module>conciliacion</module>
+        <module>lotes</module>
+        <module>ejecucion</module>
+        <module>auditoria</module>
+        <module>acceso</module>
+        <module>configuracion</module>
+        <module>ensamblaje</module>
+        <module>arranque-web</module>
+        <module>arranque-worker</module>
+        <module>arquitectura</module>
+    </modules>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>com.guajiranet.migradoronu</groupId>
+                <artifactId>comun</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.guajiranet.migradoronu</groupId>
+                <artifactId>integraciones</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.guajiranet.migradoronu</groupId>
+                <artifactId>procedimientos</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.guajiranet.migradoronu</groupId>
+                <artifactId>conciliacion</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.guajiranet.migradoronu</groupId>
+                <artifactId>lotes</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.guajiranet.migradoronu</groupId>
+                <artifactId>ejecucion</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.guajiranet.migradoronu</groupId>
+                <artifactId>auditoria</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.guajiranet.migradoronu</groupId>
+                <artifactId>acceso</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.guajiranet.migradoronu</groupId>
+                <artifactId>configuracion</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.guajiranet.migradoronu</groupId>
+                <artifactId>ensamblaje</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.tngtech.archunit</groupId>
+                <artifactId>archunit</artifactId>
+                <version>${archunit.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.bouncycastle</groupId>
+                <artifactId>bcprov-jdk18on</artifactId>
+                <version>${bouncycastle.version}</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

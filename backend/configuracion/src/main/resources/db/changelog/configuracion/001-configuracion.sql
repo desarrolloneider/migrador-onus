@@ -1,0 +1,52 @@
+--liquibase formatted sql
+
+--changeset migrador:configuracion-001-olts
+--comment: OLT registradas y sus tarjetas permitidas (RN-14). Sin credenciales: viven en el servidor (arquitectura 11.1).
+CREATE TABLE olts (
+    id                  BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    codigo              VARCHAR(40)  NOT NULL,
+    nombre              VARCHAR(120) NOT NULL,
+    direccion           VARCHAR(255),
+    puerto              INTEGER CHECK (puerto BETWEEN 1 AND 65535),
+    protocolo           VARCHAR(10) CHECK (protocolo IN ('SSH', 'TELNET')),
+    tarjetas_permitidas JSONB NOT NULL DEFAULT '[]'::jsonb CHECK (jsonb_typeof(tarjetas_permitidas) = 'array'),
+    activa              BOOLEAN NOT NULL DEFAULT TRUE,
+    actualizado_por     BIGINT,
+    actualizado_en      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT uk_olts_codigo UNIQUE (codigo)
+);
+--rollback DROP TABLE olts;
+
+--changeset migrador:configuracion-001-parametros
+--comment: Parámetros de la spec 7.5. Un valor NULL significa "sin valor" (por ejemplo, PC-36 sin decidir).
+CREATE TABLE parametros (
+    clave           VARCHAR(80) PRIMARY KEY,
+    valor           JSONB,
+    descripcion     TEXT NOT NULL,
+    actualizado_por BIGINT,
+    actualizado_en  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+--rollback DROP TABLE parametros;
+
+--changeset migrador:configuracion-002-parametros-iniciales
+--comment: Valores iniciales de la spec 7.5. Los marcados como propuesta se ajustan con el piloto.
+INSERT INTO parametros (clave, valor, descripcion) VALUES
+    ('perfil_tr069',                         '"guajiranet1"',     'Perfil TR-069 que se asigna (PC-02 cerrado, RN-12)'),
+    ('guardar_configuracion_olt',            NULL,                'Si se guarda la configuración de la OLT y cuándo. Sin valor: solo simulación (PC-36, DEC-34)'),
+    ('tiempo_conexion_olt_segundos',         '10',                'Tiempo máximo para conectarse a la OLT (propuesta)'),
+    ('tiempo_respuesta_comando_segundos',    '30',                'Tiempo máximo de respuesta a un comando (propuesta)'),
+    ('tiempo_peticion_api_segundos',         '30',                'Tiempo máximo de cada petición a SmartOLT o Wispro (propuesta)'),
+    ('reintentos_lectura',                   '3',                 'Reintentos de una lectura, con espera creciente (propuesta, RN-18)'),
+    ('onus_en_paralelo',                     '1',                 'ONUs ejecutándose al mismo tiempo (PC-15)'),
+    ('sesiones_por_olt',                     '1',                 'Sesiones de la herramienta por OLT (RN-34)'),
+    ('tamano_maximo_lote',                   '50',                'Máximo de ONUs por lote, 200 si el piloto sale bien (DEC-32)'),
+    ('vigencia_vista_previa_minutos',        '30',                'Vigencia de una vista previa sin confirmar (DEC-32)'),
+    ('inactividad_sesion_minutos',           '30',                'Cierre de la sesión de usuario por inactividad (propuesta)'),
+    ('detencion_automatica_fallos_seguidos', '3',                 'ONUs seguidas con FALLO_SISTEMA_NO_RESPONDE que detienen el lote (propuesta, PC-24)'),
+    ('intentos_fallidos_bloqueo',            '5',                 'Intentos fallidos seguidos que bloquean al usuario (propuesta)'),
+    ('minutos_bloqueo',                      '15',                'Minutos de bloqueo por intentos fallidos (propuesta)'),
+    ('zona_horaria',                         '"America/Bogota"',  'Zona horaria en que se muestran las fechas (RN-21)'),
+    ('parada_ordenada_minutos',              '5',                 'Espera máxima de la parada ordenada (propuesta, RN-38)'),
+    ('tiempo_estimado_por_onu_minutos',      '2',                 'Tiempo estimado máximo por ONU para la vista previa (propuesta)'),
+    ('ventana_horaria',                      NULL,                'Ventana horaria para ejecutar. Sin valor: sin restricción (PC-25)');
+--rollback DELETE FROM parametros;

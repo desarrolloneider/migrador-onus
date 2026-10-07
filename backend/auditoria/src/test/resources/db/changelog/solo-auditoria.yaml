@@ -1,0 +1,4 @@
+# Solo las tablas del módulo auditoria, para probarlo aislado.
+databaseChangeLog:
+  - include:
+      file: db/changelog/auditoria/001-auditoria.sql

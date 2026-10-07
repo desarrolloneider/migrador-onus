@@ -1,0 +1,38 @@
+{
+    "name":  "migrador-onu-frontend",
+    "version":  "0.1.0",
+    "scripts":  {
+                    "ng":  "ng",
+                    "start":  "ng serve",
+                    "build":  "ng build",
+                    "build:ejemplo":  "ng build --configuration ejemplo",
+                    "watch":  "ng build --watch --configuration development",
+                    "test":  "ng test"
+                },
+    "private":  true,
+    "packageManager":  "pnpm@11.25.0",
+    "dependencies":  {
+                         "@angular/cdk":  "^22.2.1",
+                         "@angular/common":  "^22.1.0",
+                         "@angular/compiler":  "^22.1.0",
+                         "@angular/core":  "^22.1.0",
+                         "@angular/forms":  "^22.1.0",
+                         "@angular/material":  "^22.2.1",
+                         "@angular/platform-browser":  "^22.1.0",
+                         "@angular/router":  "^22.1.0",
+                         "@stomp/stompjs":  "^7.3.0",
+                         "material-symbols":  "^0.47.6",
+                         "rxjs":  "~7.8.0",
+                         "tslib":  "^2.3.0",
+                         "zone.js":  "~0.16.0"
+                     },
+    "devDependencies":  {
+                            "@angular/build":  "^22.1.4",
+                            "@angular/cli":  "^22.1.4",
+                            "@angular/compiler-cli":  "^22.1.0",
+                            "jsdom":  "^28.0.0",
+                            "prettier":  "^3.8.1",
+                            "typescript":  "~6.0.2",
+                            "vitest":  "^4.0.8"
+                        }
+}

@@ -1,0 +1,17 @@
+package com.guajiranet.migradoronu.lotes.dominio;
+
+/** Marca obligatoria y filtros opcionales de un lote (ESP-03). Zona y nodo no se usan (respuesta del 3 de octubre). */
+public record BatchFilters(String marca, String oltCodigo, String tarjeta, Integer pon) {
+
+    public BatchFilters {
+        if (marca == null || marca.isBlank()) {
+            throw new IllegalArgumentException("La marca es obligatoria (ESP-03)");
+        }
+        if (tarjeta != null && oltCodigo == null) {
+            throw new IllegalArgumentException("Para escoger tarjeta hay que escoger OLT (ESP-03)");
+        }
+        if (pon != null && tarjeta == null) {
+            throw new IllegalArgumentException("Para escoger puerto PON hay que escoger tarjeta (ESP-03)");
+        }
+    }
+}

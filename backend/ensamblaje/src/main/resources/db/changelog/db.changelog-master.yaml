@@ -1,0 +1,15 @@
+# Changelog maestro. Cada módulo es dueño de sus tablas y las define en su propio jar
+# (db/changelog/<modulo>/). El orden importa por las llaves foráneas.
+databaseChangeLog:
+  - include:
+      file: db/changelog/configuracion/001-configuracion.sql
+  - include:
+      file: db/changelog/acceso/001-acceso.sql
+  - include:
+      file: db/changelog/lotes/001-lotes.sql
+  - include:
+      file: db/changelog/ejecucion/001-ejecucion.sql
+  - include:
+      file: db/changelog/auditoria/001-auditoria.sql
+  - include:
+      file: db/changelog/comun/001-comun.sql

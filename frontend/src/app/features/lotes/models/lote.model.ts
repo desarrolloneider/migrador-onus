@@ -1,0 +1,104 @@
+/** Estados del lote (spec 7 y 7.1). */
+export type EstadoLote =
+  | 'VISTA_PREVIA'
+  | 'CONFIRMADO'
+  | 'EN_EJECUCION'
+  | 'DETENIENDOSE'
+  | 'TERMINADO'
+  | 'TERMINADO_CON_FALLAS'
+  | 'DETENIDO'
+  | 'DESCARTADO';
+
+export type ModoLote = 'LOTE' | 'INDIVIDUAL';
+
+/** Los tres grupos de la vista previa (ESP-04). */
+export type GrupoVistaPrevia = 'ENTRA' | 'EXCLUIDA' | 'YA_TIENE_PERFIL';
+
+export interface FiltrosLote {
+  marca: string;
+  olt: string | null;
+  tarjeta: string | null;
+  pon: number | null;
+}
+
+export interface ContadoresLote {
+  entran: number;
+  excluidas: number;
+  yaTienenPerfil: number;
+  pendientes: number;
+  enCurso: number;
+  completadas: number;
+  fallidas: number;
+  excluidasAlEjecutar: number;
+  noIniciadas: number;
+}
+
+export interface Lote {
+  id: number;
+  numero: string;
+  modo: ModoLote;
+  simulacion: boolean;
+  estado: EstadoLote;
+  filtros: FiltrosLote;
+  creadoPor: string;
+  creadoEn: string;
+  venceEn: string;
+  confirmadoPor: string | null;
+  confirmadoEn: string | null;
+  iniciadoEn: string | null;
+  terminadoEn: string | null;
+  motivoDetencion: string | null;
+  procedimientoVersion: string | null;
+  contadores: ContadoresLote;
+  /** Cuánto podría tardar el lote como máximo (ESP-04). */
+  tiempoEstimadoMaximoMin: number;
+}
+
+/** Un registro repetido de SmartOLT que no se usó (RN-35). */
+export interface RegistroDuplicado {
+  olt: string;
+  tarjeta: string;
+  pon: number;
+  onuId: number;
+  enLinea: boolean;
+}
+
+export interface ItemVistaPrevia {
+  sn: string;
+  ip: string | null;
+  grupo: GrupoVistaPrevia;
+  codigoMotivo: string | null;
+  mensaje: string | null;
+  cliente: string | null;
+  contrato: string | null;
+  modelo: string | null;
+  olt: string;
+  tarjeta: string | null;
+  pon: number | null;
+  onuId: number | null;
+  perfilActual: string | null;
+  registrosDuplicados: RegistroDuplicado[];
+}
+
+export interface VistaPrevia {
+  lote: Lote;
+  items: ItemVistaPrevia[];
+  /** Sin decidir PC-36 no se ejecuta real, solo se simula (DEC-34). */
+  soloSimulacion: boolean;
+  motivoSoloSimulacion: string | null;
+}
+
+export interface ArmarLoteRequest {
+  marca: string;
+  olt: string | null;
+  tarjeta: string | null;
+  pon: number | null;
+}
+
+export interface ArmarPruebaIndividualRequest {
+  sn: string;
+}
+
+export interface ConfirmarLoteRequest {
+  simulacion: boolean;
+}

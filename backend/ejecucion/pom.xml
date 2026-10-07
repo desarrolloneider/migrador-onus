@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.guajiranet.migradoronu</groupId>
+        <artifactId>migrador-onu</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>ejecucion</artifactId>
+    <name>ejecucion</name>
+    <description>Ejecuta el procedimiento sobre cada ONU paso a paso en la OLT, con verificación, fotografía previa, detención en el primer fallo e historial.</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.guajiranet.migradoronu</groupId>
+            <artifactId>comun</artifactId>
+        </dependency>
+        <!-- Única dependencia entre módulos de dominio, en una sola dirección: ejecucion usa el contrato
+             de pasos de procedimientos.dominio y le entrega las capacidades (corrección 2b, docs/adr/0003). -->
+        <dependency>
+            <groupId>com.guajiranet.migradoronu</groupId>
+            <artifactId>procedimientos</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-jdbc</artifactId>
+        </dependency>
+    </dependencies>
+</project>
