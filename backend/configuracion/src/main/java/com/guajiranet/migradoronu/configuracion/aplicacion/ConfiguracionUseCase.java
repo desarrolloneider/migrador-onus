@@ -75,6 +75,51 @@ public class ConfiguracionUseCase implements QueryParametersPort, ConfigureParam
     }
 
     @Override
+    public Optional<String> huellaSsh(String oltCodigo) {
+        return olts.huella(oltCodigo);
+    }
+
+    @Override
+    public OltSettings cambiarAcceso(long oltId, String direccion, Integer puerto, String protocolo, long usuarioId, String ipOrigen) {
+        OltSettings olt = olts.porId(oltId).orElseThrow(() -> ErrorDeNegocio.noEncontrado("Esa OLT no está registrada."));
+        exigirSinLoteEnEjecucion();
+        String dir = direccion == null || direccion.isBlank() ? null : direccion.strip();
+        if (dir != null && !dir.matches("[A-Za-z0-9.:-]{1,100}")) {
+            throw ErrorDeNegocio.datosInvalidos("La dirección no es válida: escribe una IP o un nombre de equipo.");
+        }
+        if (puerto != null && (puerto < 1 || puerto > 65_535)) {
+            throw ErrorDeNegocio.datosInvalidos("El puerto debe estar entre 1 y 65535.");
+        }
+        if (protocolo != null && !protocolo.isBlank() && !protocolo.strip().equalsIgnoreCase("SSH")) {
+            throw ErrorDeNegocio.datosInvalidos("Por ahora solo se conecta por SSH.");
+        }
+        Integer p = dir == null ? null : (puerto == null ? 22 : puerto);
+        olts.guardarAcceso(oltId, dir, p, dir == null ? null : "SSH", usuarioId, reloj.instant());
+        String anterior = olt.direccion() == null ? "sin acceso" : olt.direccion() + ":" + olt.puerto();
+        String nuevo = dir == null ? "sin acceso" : dir + ":" + p;
+        Map<String, Object> peticion = new LinkedHashMap<>();
+        peticion.put("anterior", anterior);
+        peticion.put("nuevo", nuevo);
+        auditoria.record(AuditEntry.builder(ActorType.USUARIO, AuditAction.ACCESO_OLT_CAMBIADO)
+                .usuarioId(usuarioId).ipOrigen(ipOrigen).sistema("OLT " + olt.codigo()).peticion(peticion).resultado("OK")
+                .mensaje("Acceso por consola de " + olt.codigo() + ": " + anterior + " → " + nuevo)
+                .build());
+        return olts.porId(oltId).orElseThrow();
+    }
+
+    @Override
+    public void fijarHuella(long oltId, String huella, long usuarioId, String ipOrigen) {
+        OltSettings olt = olts.porId(oltId).orElseThrow(() -> ErrorDeNegocio.noEncontrado("Esa OLT no está registrada."));
+        if (huella == null || !huella.strip().matches("SHA256:[A-Za-z0-9+/=]{20,100}")) {
+            throw ErrorDeNegocio.datosInvalidos("La huella no tiene el formato SHA256:...");
+        }
+        olts.guardarHuella(oltId, huella.strip(), usuarioId, reloj.instant());
+        auditoria.record(AuditEntry.builder(ActorType.USUARIO, AuditAction.HUELLA_OLT_FIJADA)
+                .usuarioId(usuarioId).ipOrigen(ipOrigen).sistema("OLT " + olt.codigo()).resultado("OK")
+                .mensaje("Huella SSH de " + olt.codigo() + " fijada: " + huella.strip()).build());
+    }
+
+    @Override
     public Optional<String> loteQueBloquea() {
         return lotesActivos.runningBatchNumber();
     }

@@ -88,9 +88,15 @@ public class AuditoriaController {
                             @RequestParam(required = false) String sn, @RequestParam(required = false) String sistema,
                             @RequestParam(required = false) String paso, @RequestParam(required = false) String accion,
                             @RequestParam(required = false) String resultado, @RequestParam(defaultValue = "0") int pagina,
-                            @RequestParam(defaultValue = "50") int tamano) {
+                            @RequestParam(defaultValue = "50") int tamano, @RequestParam(required = false) Long usuarioId) {
         Optional<AuditSearchCriteria> criterio = criterio(desde, hasta, usuario, lote, sn, sistema, paso, accion, resultado, pagina,
                 Math.min(Math.max(tamano, 1), AuditSearchCriteria.MAX_PAGE_SIZE));
+        if (usuarioId != null && criterio.isPresent()) {
+            // La ficha de un usuario pide su actividad por id, sin depender de que el nombre sea único.
+            AuditSearchCriteria c = criterio.get();
+            criterio = Optional.of(new AuditSearchCriteria(c.desde(), c.hasta(), usuarioId, c.loteId(), c.sn(), c.sistema(), c.paso(),
+                    c.resultado(), c.accion(), c.page(), c.size(), c.recientesPrimero()));
+        }
         if (criterio.isEmpty()) {
             return new PaginaDto(List.of(), 0, pagina, tamano);
         }

@@ -9,6 +9,7 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { DecimalPipe } from '@angular/common';
 import { Router, RouterLink } from '@angular/router';
 import { EMPTY, auditTime, catchError, filter, finalize, forkJoin, interval, map, of, startWith, switchMap } from 'rxjs';
+import { AuthService } from '../../../../core/auth/auth.service';
 import { mensajeDeError } from '../../../../core/api/errores';
 import { TiempoRealService } from '../../../../core/realtime/tiempo-real.service';
 import { ConfirmarDialogoComponent, DatosConfirmacion } from '../../../../shared/dialogos/confirmar-dialogo.component';
@@ -57,7 +58,7 @@ interface Contador {
           </div>
           <div class="acciones">
             @if (l.estado === 'EN_EJECUCION' || l.estado === 'CONFIRMADO') {
-              <button mat-stroked-button class="boton-peligro" (click)="detener()" [disabled]="deteniendo()"><mat-icon>stop_circle</mat-icon> Detener lote</button>
+              <button mat-stroked-button class="boton-peligro" [class.oculto-sin-permiso]="!puedeEjecutar" (click)="detener()" [disabled]="deteniendo()"><mat-icon>stop_circle</mat-icon> Detener lote</button>
             }
             @if (l.estado === 'DETENIENDOSE') {
               <button mat-stroked-button disabled><mat-icon class="girando">autorenew</mat-icon> Deteniéndose…</button>
@@ -82,7 +83,7 @@ interface Contador {
           <div class="aviso aviso-real">
             <mat-icon>play_circle</mat-icon>
             <span>¿Salió bien la simulación? Arma una vista previa nueva con los mismos filtros y ejecútala de verdad. SmartOLT, la OLT y Wispro se vuelven a leer antes de cambiar nada.</span>
-            <button mat-flat-button type="button" (click)="repetirDeVerdad(l.id)" [disabled]="repitiendo()">
+            <button mat-flat-button type="button" [class.oculto-sin-permiso]="!puedeEjecutar" (click)="repetirDeVerdad(l.id)" [disabled]="repitiendo()">
               <mat-icon>play_arrow</mat-icon> {{ repitiendo() ? 'Armando…' : 'Ejecutar de verdad' }}
             </button>
           </div>
@@ -151,7 +152,7 @@ interface Contador {
             </div>
             <div class="resumen-acciones">
               @if (fallidas().length) {
-                <button mat-flat-button type="button" (click)="reintentarFallidas()" [disabled]="reintentandoTodas() || reintentando() !== null">
+                <button mat-flat-button type="button" [class.oculto-sin-permiso]="!puedeEjecutar" (click)="reintentarFallidas()" [disabled]="reintentandoTodas() || reintentando() !== null">
                   <mat-icon>replay</mat-icon> {{ reintentandoTodas() ? 'Reintentando…' : 'Reintentar las ' + fallidas().length + ' fallidas' }}
                 </button>
               }
@@ -200,7 +201,7 @@ interface Contador {
                     } @else if (e.estado === 'FALLIDA') {
                       <div class="reintento">
                         <button mat-stroked-button type="button" [disabled]="reintentando() !== null"
-                                (click)="$event.stopPropagation(); $event.preventDefault(); reintentar(e)">
+                                [class.oculto-sin-permiso]="!puedeEjecutar" (click)="$event.stopPropagation(); $event.preventDefault(); reintentar(e)">
                           <mat-icon>replay</mat-icon> {{ reintentando() === e.id ? 'Reintentando…' : 'Reintentar' }}
                         </button>
                       </div>
@@ -267,6 +268,8 @@ interface Contador {
   `,
 })
 export class EjecucionLoteComponent implements OnInit {
+  /** Sin el módulo "Ejecutar cambios" no se muestran los botones de simular, ejecutar, detener ni reintentar. */
+  protected readonly puedeEjecutar = inject(AuthService).puede('EJECUTAR');
   private readonly lotesService = inject(LotesService);
   private readonly tiempoReal = inject(TiempoRealService);
   private readonly dialogo = inject(MatDialog);

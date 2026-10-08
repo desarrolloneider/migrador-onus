@@ -1,6 +1,7 @@
 import { BreakpointObserver } from '@angular/cdk/layout';
 import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, afterNextRender, computed, inject, signal, viewChild } from '@angular/core';
 import { AnimacionesService } from '../core/animaciones/animaciones.service';
+import { Modulo } from '../core/auth/models';
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { MatBadgeModule } from '@angular/material/badge';
 import { MatButtonModule } from '@angular/material/button';
@@ -21,6 +22,8 @@ interface EnlaceMenu {
   ruta: string;
   etiqueta: string;
   icono: string;
+  /** El módulo que hace falta para verlo; sin módulo lo ve todo el que entra. */
+  modulo?: Modulo;
 }
 
 /** Marco de la aplicación: menú, estado del proceso ejecutor y usuario. */
@@ -47,7 +50,7 @@ interface EnlaceMenu {
           </span>
         </a>
         <mat-nav-list>
-          @for (enlace of enlaces; track enlace.ruta) {
+          @for (enlace of enlacesVisibles(); track enlace.ruta) {
             <a mat-list-item [routerLink]="enlace.ruta" routerLinkActive [routerLinkActiveOptions]="{ exact: enlace.ruta === '/lotes' }" #activo="routerLinkActive" [activated]="activo.isActive">
               <mat-icon matListItemIcon>{{ enlace.icono }}</mat-icon>
               <span matListItemTitle>{{ enlace.etiqueta }}</span>
@@ -57,6 +60,15 @@ interface EnlaceMenu {
             </a>
           }
         </mat-nav-list>
+        @if (auth.esAdministrador()) {
+          <div class="seccion-admin">Administración</div>
+          <mat-nav-list>
+            <a mat-list-item routerLink="/usuarios" routerLinkActive #usuarios="routerLinkActive" [activated]="usuarios.isActive">
+              <mat-icon matListItemIcon>manage_accounts</mat-icon>
+              <span matListItemTitle>Gestión de usuarios</span>
+            </a>
+          </mat-nav-list>
+        }
       </mat-sidenav>
 
       <mat-sidenav-content class="contenido">
@@ -87,6 +99,9 @@ interface EnlaceMenu {
               <span>{{ auth.usuario()?.usuario }}</span>
             </div>
             <a mat-menu-item routerLink="/cambiar-clave"><mat-icon>key</mat-icon> Cambiar contraseña</a>
+            @if (auth.esAdministrador()) {
+              <a mat-menu-item routerLink="/usuarios"><mat-icon>manage_accounts</mat-icon> Gestión de usuarios</a>
+            }
             <button mat-menu-item (click)="cerrarSesion()"><mat-icon>logout</mat-icon> Cerrar sesión</button>
           </mat-menu>
         </mat-toolbar>
@@ -102,6 +117,8 @@ interface EnlaceMenu {
     </mat-sidenav-container>
   `,
   styles: `
+    .seccion-admin { margin: 16px 16px 0; padding-top: 12px; border-top: 1px solid var(--mat-sys-outline-variant);
+      font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--mat-sys-on-surface-variant); }
     :host { display: flex; flex-direction: column; height: 100%; }
     .banner-ejemplo { display: flex; gap: 8px; align-items: center; padding: 6px 16px; font-size: 13px;
       background: var(--fondo-simulado); color: var(--color-simulado); border-bottom: 1px solid color-mix(in srgb, var(--color-simulado) 30%, transparent); }
@@ -136,14 +153,19 @@ export class ShellComponent {
 
   protected readonly enlaces: EnlaceMenu[] = [
     { ruta: '/inicio', etiqueta: 'Inicio', icono: 'home' },
-    { ruta: '/lotes/nuevo', etiqueta: 'Nuevo lote', icono: 'add_circle' },
-    { ruta: '/lotes', etiqueta: 'Lotes', icono: 'inventory_2' },
-    { ruta: '/prueba-individual', etiqueta: 'Prueba individual', icono: 'labs' },
-    { ruta: '/historial', etiqueta: 'Historial de ONUs', icono: 'history' },
-    { ruta: '/fallidas', etiqueta: 'Fallidas por revisar', icono: 'report' },
-    { ruta: '/auditoria', etiqueta: 'Auditoría', icono: 'policy' },
-    { ruta: '/configuracion', etiqueta: 'Configuración', icono: 'settings' },
+    { ruta: '/lotes/nuevo', etiqueta: 'Nuevo lote', icono: 'add_circle', modulo: 'LOTES' },
+    { ruta: '/lotes', etiqueta: 'Lotes', icono: 'inventory_2', modulo: 'LOTES' },
+    { ruta: '/prueba-individual', etiqueta: 'Prueba individual', icono: 'labs', modulo: 'LOTES' },
+    { ruta: '/historial', etiqueta: 'Historial de ONUs', icono: 'history', modulo: 'HISTORIAL' },
+    { ruta: '/fallidas', etiqueta: 'Fallidas por revisar', icono: 'report', modulo: 'FALLIDAS' },
+    { ruta: '/auditoria', etiqueta: 'Auditoría', icono: 'policy', modulo: 'AUDITORIA' },
+    { ruta: '/configuracion', etiqueta: 'Configuración', icono: 'settings', modulo: 'CONFIGURACION' },
   ];
+  /** Los enlaces que este usuario puede usar. */
+  protected readonly enlacesVisibles = computed(() => {
+    this.auth.usuario();
+    return this.enlaces.filter((e) => !e.modulo || this.auth.puede(e.modulo));
+  });
 
   protected readonly esMovil = toSignal(
     inject(BreakpointObserver).observe('(max-width: 960px)').pipe(map((r) => r.matches)), { initialValue: false });

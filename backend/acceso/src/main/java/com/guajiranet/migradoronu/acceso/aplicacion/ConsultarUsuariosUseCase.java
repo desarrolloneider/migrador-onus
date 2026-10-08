@@ -31,4 +31,9 @@ public class ConsultarUsuariosUseCase implements QueryUsersPort {
     public Set<Long> idsQueCoinciden(String texto) {
         return texto == null || texto.isBlank() ? Set.of() : usuarios.idsQueCoinciden(texto.strip());
     }
+
+    @Override
+    public com.guajiranet.migradoronu.acceso.dominio.Permisos permisos(long usuarioId) {
+        return usuarios.permisos(usuarioId);
+    }
 }

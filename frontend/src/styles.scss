@@ -212,3 +212,4 @@ table.tabla tbody tr.clicable:focus-visible { outline: 2px solid var(--mat-sys-p
   .aviso-error > mat-icon, .aviso-advertencia > mat-icon { animation: none; }
   button.kpi:hover, a.kpi:hover, a.tarjeta:hover { transform: none; }
 }
+.oculto-sin-permiso { display: none !important; }

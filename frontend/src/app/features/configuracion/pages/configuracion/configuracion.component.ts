@@ -11,12 +11,12 @@ import { MatSelectModule } from '@angular/material/select';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { RouterLink } from '@angular/router';
-import { filter, forkJoin, switchMap } from 'rxjs';
+import { filter, finalize, forkJoin, switchMap } from 'rxjs';
 import { mensajeDeError } from '../../../../core/api/errores';
 import { ConfirmarDialogoComponent, DatosConfirmacion } from '../../../../shared/dialogos/confirmar-dialogo.component';
 import { HoraColombiaPipe } from '../../../../shared/formato/formato.pipes';
 import { ConfiguracionService } from '../../data/configuracion.service';
-import { Configuracion, Olt, Parametro } from '../../models/configuracion.model';
+import { Configuracion, Olt, Parametro, PruebaDeConexion } from '../../models/configuracion.model';
 
 /** Parámetros, OLT y tarjetas permitidas, sin tocar el programa (ESP-15, RNF-11). */
 @Component({
@@ -92,7 +92,7 @@ import { Configuracion, Olt, Parametro } from '../../models/configuracion.model'
       }
 
       <section class="bloque olts">
-        <h2><mat-icon>dns</mat-icon> OLT y tarjetas permitidas</h2>
+        <h2><mat-icon>dns</mat-icon> OLT: acceso por consola y tarjetas permitidas</h2>
         <p class="nota">Solo se entra a las tarjetas de esta lista (RN-14). Las credenciales de cada OLT viven en el servidor y nunca se ven ni se cambian aquí (RN-25).</p>
         <div class="rejilla-olts">
           @for (olt of olts(); track olt.id) {
@@ -105,6 +105,46 @@ import { Configuracion, Olt, Parametro } from '../../models/configuracion.model'
                   <span class="acceso tono-error"><mat-icon>link_off</mat-icon> Sin acceso por consola</span>
                 }
               </header>
+              <div class="consola">
+                <div class="fila-acceso">
+                  <mat-form-field class="campo-ip">
+                    <mat-label>IP de gestión</mat-label>
+                    <input matInput placeholder="10.11.x.x" [ngModel]="accesoDe(olt).direccion" (ngModelChange)="escribirAcceso(olt, 'direccion', $event)"
+                           [disabled]="!!bloqueo()" autocomplete="off" />
+                  </mat-form-field>
+                  <mat-form-field class="campo-puerto">
+                    <mat-label>Puerto SSH</mat-label>
+                    <input matInput type="number" [ngModel]="accesoDe(olt).puerto" (ngModelChange)="escribirAcceso(olt, 'puerto', $event)"
+                           [disabled]="!!bloqueo()" />
+                  </mat-form-field>
+                </div>
+                <div class="botones-acceso">
+                  @if (accesoCambiado(olt)) {
+                    <button mat-flat-button (click)="guardarAcceso(olt)" [disabled]="ocupada()[olt.id]"><mat-icon>save</mat-icon> Guardar acceso</button>
+                  }
+                  <button mat-stroked-button (click)="probar(olt)" [disabled]="!olt.direccion || accesoCambiado(olt) || ocupada()[olt.id]"
+                          [matTooltip]="accesoCambiado(olt) ? 'Guarda primero' : 'Entra por SSH y solo lee los perfiles; no cambia nada'">
+                    <mat-icon>network_check</mat-icon> Probar conexión</button>
+                </div>
+                @if (ocupada()[olt.id]) { <mat-progress-bar mode="indeterminate" /> }
+                <p class="nota huella">
+                  <mat-icon>fingerprint</mat-icon>
+                  @if (olt.huellaSsh) { <span>Huella fijada: <code>{{ olt.huellaSsh }}</code></span> }
+                  @else { <span>Sin huella fijada: prueba la conexión y fíjala.</span> }
+                </p>
+                @if (pruebas()[olt.id]; as p) {
+                  <div class="resultado" [class.bien]="p.conecto && p.huellaCoincide" [class.mal]="!p.conecto">
+                    <p><mat-icon>{{ !p.conecto ? 'error' : p.huellaCoincide ? 'check_circle' : 'help' }}</mat-icon> {{ p.mensaje }}</p>
+                    @if (p.conecto && !p.huellaCoincide && p.huellaPresentada) {
+                      <p class="nota">La OLT presentó la huella <code>{{ p.huellaPresentada }}</code>. Si es la OLT correcta, fíjala.</p>
+                      <button mat-flat-button (click)="fijarHuella(olt, p.huellaPresentada)"><mat-icon>fingerprint</mat-icon> Fijar esta huella</button>
+                    }
+                    @if (p.perfiles.length) {
+                      <div class="perfiles">@for (perfil of p.perfiles; track perfil) { <span class="chip-perfil mono">{{ perfil }}</span> }</div>
+                    }
+                  </div>
+                }
+              </div>
               @if (olt.protocolo === 'TELNET') {
                 <p class="aviso aviso-advertencia pequeno"><mat-icon>warning</mat-icon> <span>Solo Telnet: el acceso se restringe por red y queda como riesgo aceptado por escrito (PC-35).</span></p>
               }
@@ -161,6 +201,21 @@ import { Configuracion, Olt, Parametro } from '../../models/configuracion.model'
     .acceso mat-icon { font-size: 16px; width: 16px; height: 16px; }
     .pequeno { font-size: 12.5px; padding: 8px 10px; }
     .sin-tarjetas { color: var(--color-aviso); }
+    .consola { display: flex; flex-direction: column; gap: 6px; padding-bottom: 12px; margin-bottom: 12px; border-bottom: 1px solid var(--mat-sys-outline-variant); }
+    .fila-acceso { display: flex; gap: 8px; }
+    .campo-ip { flex: 1; min-width: 0; }
+    .campo-puerto { width: 110px; }
+    .botones-acceso { display: flex; gap: 8px; flex-wrap: wrap; }
+    .huella { display: flex; gap: 6px; align-items: center; margin: 4px 0 0; word-break: break-all; }
+    .huella mat-icon { font-size: 18px; width: 18px; height: 18px; flex: none; }
+    code { font-family: var(--fuente-mono); font-size: 11.5px; }
+    .resultado { border-radius: 10px; padding: 8px 10px; background: var(--mat-sys-surface-container-high); font-size: 13px; }
+    .resultado.bien { background: var(--fondo-exito); }
+    .resultado.mal { background: color-mix(in srgb, var(--mat-sys-error) 12%, transparent); }
+    .resultado p { display: flex; gap: 6px; align-items: flex-start; margin: 2px 0 6px; word-break: break-all; }
+    .resultado p mat-icon { font-size: 18px; width: 18px; height: 18px; flex: none; }
+    .perfiles { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+    .chip-perfil { font-size: 11.5px; padding: 2px 8px; border-radius: 999px; background: var(--mat-sys-surface-container-highest); }
     .agregar { display: flex; gap: 8px; align-items: flex-start; margin-top: 12px; }
     .agregar mat-form-field { width: 160px; }
     .agregar button { height: 48px; }
@@ -178,6 +233,9 @@ export class ConfiguracionComponent implements OnInit {
   protected readonly borradorTarjetas = signal<Record<number, string[]>>({});
   protected readonly nuevaTarjeta = signal<Record<number, string>>({});
   protected borrador: string | number | null = null;
+  protected readonly borradorAcceso = signal<Record<number, { direccion: string; puerto: number | null }>>({});
+  protected readonly pruebas = signal<Record<number, PruebaDeConexion>>({});
+  protected readonly ocupada = signal<Record<number, boolean>>({});
 
   protected readonly bloqueo = computed(() => this.configuracion()?.bloqueadaPorLote ?? null);
   protected readonly grupos = computed(() => {
@@ -222,6 +280,66 @@ export class ConfiguracionComponent implements OnInit {
         this.cargar();
       },
       error: (error: unknown) => this.error.set(mensajeDeError(error)),
+    });
+  }
+
+  protected accesoDe(olt: Olt): { direccion: string; puerto: number | null } {
+    return this.borradorAcceso()[olt.id] ?? { direccion: olt.direccion ?? '', puerto: olt.puerto ?? 22 };
+  }
+
+  protected escribirAcceso(olt: Olt, campo: 'direccion' | 'puerto', valor: string | number | null): void {
+    const actual = this.accesoDe(olt);
+    this.borradorAcceso.update((b) => ({ ...b, [olt.id]: { ...actual, [campo]: campo === 'puerto' ? (valor === '' || valor === null ? null : Number(valor)) : String(valor ?? '') } }));
+  }
+
+  protected accesoCambiado(olt: Olt): boolean {
+    const b = this.borradorAcceso()[olt.id];
+    return !!b && (b.direccion.trim() !== (olt.direccion ?? '') || (b.direccion.trim() !== '' && b.puerto !== olt.puerto));
+  }
+
+  private marcarOcupada(oltId: number, valor: boolean): void {
+    this.ocupada.update((o) => ({ ...o, [oltId]: valor }));
+  }
+
+  private reemplazarOlt(actualizada: Olt): void {
+    this.olts.update((lista) => lista.map((o) => (o.id === actualizada.id ? actualizada : o)));
+  }
+
+  protected guardarAcceso(olt: Olt): void {
+    const { direccion, puerto } = this.accesoDe(olt);
+    this.marcarOcupada(olt.id, true);
+    this.configuracionService.cambiarAcceso(olt.id, { direccion: direccion.trim() || null, puerto })
+      .pipe(finalize(() => this.marcarOcupada(olt.id, false))).subscribe({
+        next: (actualizada) => {
+          this.reemplazarOlt(actualizada);
+          this.borradorAcceso.update((b) => { const { [olt.id]: _q, ...resto } = b; return resto; });
+          this.pruebas.update((p) => { const { [olt.id]: _q, ...resto } = p; return resto; });
+          this.avisos.open(`Acceso de ${olt.codigo} guardado. Ahora prueba la conexión.`, 'Cerrar', { duration: 4000 });
+        },
+        error: (e: unknown) => this.avisos.open(mensajeDeError(e), 'Cerrar', { duration: 6000 }),
+      });
+  }
+
+  protected probar(olt: Olt): void {
+    this.marcarOcupada(olt.id, true);
+    this.configuracionService.probarConexion(olt.id).pipe(finalize(() => this.marcarOcupada(olt.id, false))).subscribe({
+      next: (r) => this.pruebas.update((p) => ({ ...p, [olt.id]: r })),
+      error: (e: unknown) => this.avisos.open(mensajeDeError(e), 'Cerrar', { duration: 6000 }),
+    });
+  }
+
+  protected fijarHuella(olt: Olt, huella: string): void {
+    this.marcarOcupada(olt.id, true);
+    this.configuracionService.fijarHuella(olt.id, huella).pipe(
+      switchMap(() => this.configuracionService.listarOlts()),
+      finalize(() => this.marcarOcupada(olt.id, false)),
+    ).subscribe({
+      next: (lista) => {
+        this.olts.set(lista);
+        this.avisos.open(`Huella de ${olt.codigo} fijada. Probando de nuevo…`, 'Cerrar', { duration: 3000 });
+        this.probar(olt);
+      },
+      error: (e: unknown) => this.avisos.open(mensajeDeError(e), 'Cerrar', { duration: 6000 }),
     });
   }
 

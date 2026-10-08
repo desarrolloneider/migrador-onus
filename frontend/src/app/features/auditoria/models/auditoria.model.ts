@@ -39,6 +39,8 @@ export interface FiltrosAuditoria {
   desde?: string | null;
   hasta?: string | null;
   usuario?: string | null;
+  /** La actividad de un usuario por su id (ficha de usuario). */
+  usuarioId?: number | null;
   lote?: string | null;
   sn?: string | null;
   sistema?: string | null;
@@ -52,7 +54,7 @@ export interface FiltrosAuditoria {
 /** Catálogo de acciones (arquitectura 10.1), para el filtro. */
 export const ACCIONES_AUDITORIA: Record<string, string[]> = {
   Acceso: ['SESION_INICIADA', 'SESION_FALLIDA', 'USUARIO_BLOQUEADO', 'SESION_CERRADA', 'SESION_VENCIDA',
-    'USUARIO_CREADO', 'USUARIO_DESACTIVADO', 'USUARIO_REACTIVADO', 'CLAVE_CAMBIADA'],
+    'USUARIO_CREADO', 'USUARIO_DESACTIVADO', 'USUARIO_REACTIVADO', 'CLAVE_CAMBIADA', 'USUARIO_PERMISOS_CAMBIADOS', 'CLAVE_RESTABLECIDA'],
   Lotes: ['VISTA_PREVIA_ARMADA', 'VISTA_PREVIA_FALLIDA', 'VISTA_PREVIA_DESCARTADA', 'VISTA_PREVIA_VENCIDA', 'VISTA_PREVIA_EXPORTADA',
     'LOTE_CONFIRMADO', 'LOTE_INICIADO', 'LOTE_DETENIENDOSE', 'LOTE_DETENIDO', 'LOTE_DETENIDO_AUTOMATICO', 'LOTE_TERMINADO'],
   'Ejecución': ['ONU_TOMADA', 'ONU_EXCLUIDA_AL_EJECUTAR', 'SESION_OLT_ABIERTA', 'SESION_OLT_CERRADA',

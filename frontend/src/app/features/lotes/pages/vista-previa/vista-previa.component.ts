@@ -13,6 +13,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { Router, RouterLink } from '@angular/router';
 import { filter, finalize, interval, switchMap } from 'rxjs';
 import { descargarArchivo } from '../../../../core/api/descargas';
+import { AuthService } from '../../../../core/auth/auth.service';
 import { mensajeDeError } from '../../../../core/api/errores';
 import { ConfirmarDialogoComponent, DatosConfirmacion } from '../../../../shared/dialogos/confirmar-dialogo.component';
 import { EstadoChipComponent } from '../../../../shared/estado-chip/estado-chip.component';
@@ -152,8 +153,8 @@ import { GrupoVistaPrevia, ItemVistaPrevia, VistaPrevia } from '../../models/lot
             <span class="resumen">{{ conteo('ENTRA') }} ONUs entran · {{ conteo('EXCLUIDA') }} quedan fuera · {{ conteo('YA_TIENE_PERFIL') }} ya tienen el perfil</span>
             <button mat-stroked-button (click)="descartar()" [disabled]="ocupado()"><mat-icon>delete_sweep</mat-icon> Descartar</button>
             @if (conteo('ENTRA') > 0) {
-              <button mat-stroked-button (click)="confirmar(true)" [disabled]="ocupado()"><mat-icon>science</mat-icon> Simular</button>
-              <button mat-flat-button (click)="confirmar(false)" [disabled]="ocupado() || v.soloSimulacion"
+              <button mat-stroked-button [class.oculto-sin-permiso]="!puedeEjecutar" (click)="confirmar(true)" [disabled]="ocupado()"><mat-icon>science</mat-icon> Simular</button>
+              <button mat-flat-button [class.oculto-sin-permiso]="!puedeEjecutar" (click)="confirmar(false)" [disabled]="ocupado() || v.soloSimulacion"
                       [matTooltip]="v.soloSimulacion ? 'Falta decidir PC-36: solo se puede simular' : ''">
                 <mat-icon>play_arrow</mat-icon> Confirmar y ejecutar
               </button>
@@ -179,6 +180,8 @@ import { GrupoVistaPrevia, ItemVistaPrevia, VistaPrevia } from '../../models/lot
   `,
 })
 export class VistaPreviaComponent implements OnInit {
+  /** Sin el módulo "Ejecutar cambios" no se muestran los botones de simular, ejecutar, detener ni reintentar. */
+  protected readonly puedeEjecutar = inject(AuthService).puede('EJECUTAR');
   private readonly lotesService = inject(LotesService);
   private readonly dialogo = inject(MatDialog);
   private readonly avisos = inject(MatSnackBar);

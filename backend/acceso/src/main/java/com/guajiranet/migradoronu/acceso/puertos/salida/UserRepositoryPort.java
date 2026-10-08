@@ -30,4 +30,8 @@ public interface UserRepositoryPort {
 
     /** Cambia usuario, huella y la marca de cambio obligatorio. Lanza CONFLICTO si el usuario nuevo ya existe. */
     void cambiarCredenciales(long id, String usuario, String hashClave, boolean debeCambiarClave);
+
+    com.guajiranet.migradoronu.acceso.dominio.Permisos permisos(long id);
+
+    void guardarPermisos(long id, com.guajiranet.migradoronu.acceso.dominio.Permisos permisos);
 }

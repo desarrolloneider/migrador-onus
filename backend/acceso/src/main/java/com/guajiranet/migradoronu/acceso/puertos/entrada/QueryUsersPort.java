@@ -13,4 +13,7 @@ public interface QueryUsersPort {
     Map<Long, String> nombres(Collection<Long> ids);
 
     Set<Long> idsQueCoinciden(String texto);
+
+    /** Lo que puede hacer el usuario (módulos y si es administrador). */
+    com.guajiranet.migradoronu.acceso.dominio.Permisos permisos(long usuarioId);
 }

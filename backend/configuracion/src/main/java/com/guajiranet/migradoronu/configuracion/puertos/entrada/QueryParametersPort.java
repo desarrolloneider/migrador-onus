@@ -19,6 +19,9 @@ public interface QueryParametersPort {
 
     List<OltSettings> olts();
 
+    /** La huella SSH fijada desde Configuración para esa OLT, si la hay. */
+    Optional<String> huellaSsh(String oltCodigo);
+
     /** El número del lote en ejecución que impide cambiar la configuración (RN-28). */
     Optional<String> loteQueBloquea();
 }

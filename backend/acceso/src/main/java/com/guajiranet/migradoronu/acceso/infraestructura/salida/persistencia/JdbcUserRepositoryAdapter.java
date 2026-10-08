@@ -121,6 +121,35 @@ public class JdbcUserRepositoryAdapter implements UserRepositoryPort {
         }
     }
 
+    @Override
+    public com.guajiranet.migradoronu.acceso.dominio.Permisos permisos(long id) {
+        return jdbc.sql("SELECT es_administrador, modulos::text AS modulos FROM usuarios WHERE id = ?").param(id)
+                .query((rs, n) -> new com.guajiranet.migradoronu.acceso.dominio.Permisos(rs.getBoolean("es_administrador"),
+                        modulos(rs.getString("modulos"))))
+                .optional().orElse(com.guajiranet.migradoronu.acceso.dominio.Permisos.ninguno());
+    }
+
+    @Override
+    public void guardarPermisos(long id, com.guajiranet.migradoronu.acceso.dominio.Permisos permisos) {
+        String lista = permisos.modulos().stream().map(m -> "\"" + m.name() + "\"").sorted().collect(java.util.stream.Collectors.joining(",", "[", "]"));
+        jdbc.sql("UPDATE usuarios SET es_administrador = ?, modulos = CAST(? AS jsonb) WHERE id = ?")
+                .params(permisos.administrador(), lista, id).update();
+    }
+
+    /** Los módulos guardados; un nombre que ya no existe se ignora. */
+    private static java.util.Set<com.guajiranet.migradoronu.acceso.dominio.Modulo> modulos(String json) {
+        java.util.Set<com.guajiranet.migradoronu.acceso.dominio.Modulo> resultado = new java.util.HashSet<>();
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("\"([A-Z_]+)\"").matcher(json == null ? "" : json);
+        while (m.find()) {
+            try {
+                resultado.add(com.guajiranet.migradoronu.acceso.dominio.Modulo.valueOf(m.group(1)));
+            } catch (IllegalArgumentException ignorado) {
+                // Un módulo que ya no existe no da permisos.
+            }
+        }
+        return resultado;
+    }
+
     private Usuario aUsuario(ResultSet rs, int fila) throws SQLException {
         return new Usuario(
                 rs.getLong("id"),

@@ -77,6 +77,7 @@ public final class SesionConsolaOlt implements AutoCloseable {
             throw new ErrorDeIntegracion(SISTEMA, "No están configurados el usuario y la contraseña de consola de " + host + ".", null);
         }
         SshClient cliente = SshClient.setUpDefaultClient();
+        permitirAlgoritmosAntiguos(cliente);
         String[] huella = new String[1];
         cliente.setServerKeyVerifier((sesion, direccion, llave) -> {
             huella[0] = huella(llave);
@@ -330,6 +331,39 @@ public final class SesionConsolaOlt implements AutoCloseable {
     private static String resumen(String texto) {
         String t = texto.strip();
         return t.length() > 200 ? "…" + t.substring(t.length() - 200) : t;
+    }
+
+    /**
+     * Algunas OLT Huawei viejas solo negocian diffie-hellman con SHA-1 y cifrados CBC. Se agregan al final de la lista:
+     * con una OLT moderna se sigue usando lo moderno. La huella de la llave se sigue verificando igual.
+     */
+    private static void permitirAlgoritmosAntiguos(SshClient cliente) {
+        var kex = new java.util.ArrayList<>(cliente.getKeyExchangeFactories());
+        for (var dh : java.util.List.of(org.apache.sshd.common.kex.BuiltinDHFactories.dhgex,
+                org.apache.sshd.common.kex.BuiltinDHFactories.dhg14, org.apache.sshd.common.kex.BuiltinDHFactories.dhg1)) {
+            if (kex.stream().noneMatch(k -> k.getName().equals(dh.getName()))) {
+                kex.add(org.apache.sshd.client.ClientBuilder.DH2KEX.apply(dh));
+            }
+        }
+        cliente.setKeyExchangeFactories(kex);
+        var cifrados = new java.util.ArrayList<>(cliente.getCipherFactories());
+        for (var c : java.util.List.of(org.apache.sshd.common.cipher.BuiltinCiphers.aes128cbc,
+                org.apache.sshd.common.cipher.BuiltinCiphers.aes256cbc, org.apache.sshd.common.cipher.BuiltinCiphers.tripledescbc)) {
+            if (cifrados.stream().noneMatch(x -> x.getName().equals(c.getName()))) {
+                cifrados.add(c);
+            }
+        }
+        cliente.setCipherFactories(cifrados);
+        var macs = new java.util.ArrayList<>(cliente.getMacFactories());
+        if (macs.stream().noneMatch(m -> m.getName().equals(org.apache.sshd.common.mac.BuiltinMacs.hmacsha1.getName()))) {
+            macs.add(org.apache.sshd.common.mac.BuiltinMacs.hmacsha1);
+        }
+        cliente.setMacFactories(macs);
+        var firmas = new java.util.ArrayList<>(cliente.getSignatureFactories());
+        if (firmas.stream().noneMatch(x -> x.getName().equals(org.apache.sshd.common.signature.BuiltinSignatures.rsa.getName()))) {
+            firmas.add(org.apache.sshd.common.signature.BuiltinSignatures.rsa);
+        }
+        cliente.setSignatureFactories(firmas);
     }
 
     private static String huella(PublicKey llave) {

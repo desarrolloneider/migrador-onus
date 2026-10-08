@@ -50,6 +50,25 @@ public class JdbcOltSettingsRepositoryAdapter implements OltSettingsRepositoryPo
     }
 
     @Override
+    public void guardarAcceso(long id, String direccion, Integer puerto, String protocolo, long usuarioId, Instant ahora) {
+        jdbc.sql("UPDATE olts SET huella_ssh = CASE WHEN direccion IS DISTINCT FROM ? THEN NULL ELSE huella_ssh END, "
+                        + "direccion = ?, puerto = ?, protocolo = ?, actualizado_por = ?, actualizado_en = ? WHERE id = ?")
+                .params(direccion, direccion, puerto, protocolo, usuarioId, Timestamp.from(ahora), id).update();
+    }
+
+    @Override
+    public Optional<String> huella(String codigo) {
+        return jdbc.sql("SELECT huella_ssh FROM olts WHERE codigo = ? AND huella_ssh IS NOT NULL").param(codigo)
+                .query(String.class).optional();
+    }
+
+    @Override
+    public void guardarHuella(long id, String huella, long usuarioId, Instant ahora) {
+        jdbc.sql("UPDATE olts SET huella_ssh = ?, actualizado_por = ?, actualizado_en = ? WHERE id = ?")
+                .params(huella, usuarioId, Timestamp.from(ahora), id).update();
+    }
+
+    @Override
     public void guardarTarjetas(long id, AllowedBoards tarjetas, long usuarioId, Instant ahora) {
         jdbc.sql("UPDATE olts SET tarjetas_permitidas = CAST(? AS jsonb), actualizado_por = ?, actualizado_en = ? WHERE id = ?")
                 .params(JSON.writeValueAsString(List.copyOf(tarjetas.values())), usuarioId, Timestamp.from(ahora), id)

@@ -16,6 +16,10 @@ public enum AuditAction {
     USUARIO_DESACTIVADO(Group.ACCESO),
     USUARIO_REACTIVADO(Group.ACCESO),
     CLAVE_CAMBIADA(Group.ACCESO),
+    /** Un administrador cambió el nombre, los módulos o la marca de administrador de un usuario. */
+    USUARIO_PERMISOS_CAMBIADOS(Group.ACCESO),
+    /** Un administrador restableció la contraseña de un usuario (contraseña temporal, cambio obligatorio). */
+    CLAVE_RESTABLECIDA(Group.ACCESO),
 
     VISTA_PREVIA_ARMADA(Group.LOTES),
     VISTA_PREVIA_FALLIDA(Group.LOTES),
@@ -51,6 +55,8 @@ public enum AuditAction {
 
     PARAMETRO_CAMBIADO(Group.CONFIGURACION_Y_SISTEMA),
     TARJETAS_OLT_CAMBIADAS(Group.CONFIGURACION_Y_SISTEMA),
+    ACCESO_OLT_CAMBIADO(Group.CONFIGURACION_Y_SISTEMA),
+    HUELLA_OLT_FIJADA(Group.CONFIGURACION_Y_SISTEMA),
     EJECUTOR_INICIADO(Group.CONFIGURACION_Y_SISTEMA),
     EJECUTOR_DETENIDO(Group.CONFIGURACION_Y_SISTEMA),
     INTEGRIDAD_VERIFICADA(Group.CONFIGURACION_Y_SISTEMA),

@@ -50,6 +50,17 @@ final class UsuarioActivoFilter extends OncePerRequestFilter {
             RespuestasDeSeguridad.escribir(response, 403, "Cambia tu contraseña", "Antes de continuar debes cambiar la contraseña inicial.");
             return;
         }
+        // Módulos: cada dirección exige el suyo (ReglasDePermiso). Se revisa en cada petición, así un cambio de permisos
+        // aplica de inmediato sin cerrar la sesión.
+        if (autenticacion != null && autenticacion.getPrincipal() instanceof UsuarioAutenticado usuario) {
+            String ruta = request.getRequestURI();
+            var exigencia = ReglasDePermiso.para(request.getMethod(), ruta);
+            if (exigencia.isPresent() && !exigencia.get().cumple(usuarios.permisos(usuario.id()))) {
+                RespuestasDeSeguridad.escribir(response, 403, "Sin permiso",
+                        "No tienes permiso para " + exigencia.get().descripcion() + ". Pídeselo a un administrador.");
+                return;
+            }
+        }
         cadena.doFilter(request, response);
     }
 }

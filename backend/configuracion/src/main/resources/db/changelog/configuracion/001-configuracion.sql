@@ -64,3 +64,9 @@ INSERT INTO olts (codigo, nombre, direccion, puerto, protocolo) VALUES
     ('OLT-CONEJO',         'Conejo (MA5608T)',          '10.11.104.50', 22,   'SSH')
 ON CONFLICT (codigo) DO NOTHING;
 --rollback DELETE FROM olts WHERE codigo IN ('OLT_ALBANIA','OLT_SAN_JUAN','OLT_NEIVA','OLT_VILLAREINA','OLT_FONSECA','OLT_SAN_JUAN_2','OLT_ZTE-ZXA10-C650','OLT-CONEJO');
+
+
+--changeset migrador:configuracion-004-huella-ssh
+--comment: La huella de la llave SSH de cada OLT, fijada desde Configuración tras probar la conexión. No es secreta. Si el .env trae CONSOLA_<CODIGO>_HUELLA, manda la del .env.
+ALTER TABLE olts ADD COLUMN huella_ssh VARCHAR(200);
+--rollback ALTER TABLE olts DROP COLUMN huella_ssh;

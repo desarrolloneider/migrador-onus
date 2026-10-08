@@ -3,7 +3,7 @@ import { Injectable, computed, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { Observable, catchError, map, of, tap } from 'rxjs';
 import { environment } from '../../../environments/environment';
-import { CambiarCredencialesRequest, LoginRequest, UsuarioSesion } from './models';
+import { CambiarCredencialesRequest, LoginRequest, Modulo, UsuarioSesion } from './models';
 
 /**
  * Sesión de usuario (spec 0.1): sirve para saber quién hace cada acción. La sesión vive en el servidor con una
@@ -18,6 +18,13 @@ export class AuthService {
   private readonly usuarioActual = signal<UsuarioSesion | null>(null);
   readonly usuario = this.usuarioActual.asReadonly();
   readonly autenticado = computed(() => this.usuarioActual() !== null);
+  readonly esAdministrador = computed(() => !!this.usuarioActual()?.administrador);
+
+  /** ¿Puede usar este módulo? El servidor lo vuelve a revisar en cada petición. */
+  puede(modulo: Modulo): boolean {
+    const u = this.usuarioActual();
+    return !!u && (!!u.administrador || (u.modulos ?? []).includes(modulo));
+  }
 
   /** Al arrancar la aplicación: si ya hay una sesión abierta en el servidor, se recupera. */
   cargarSesion(): Observable<UsuarioSesion | null> {

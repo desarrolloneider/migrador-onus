@@ -86,7 +86,7 @@ public class MigradorWebApplication {
             String prefijo = "CONSOLA_" + codigo.toUpperCase(java.util.Locale.ROOT).replaceAll("[^A-Z0-9]", "_");
             var entorno = contexto.getEnvironment();
             return new PruebaDeConsola(System.out).ejecutar(codigo, olt.direccion(), olt.puerto(),
-                    entorno.getProperty(prefijo + "_USUARIO"), entorno.getProperty(prefijo + "_CLAVE"),
+                    com.guajiranet.migradoronu.ensamblaje.consola.ConsolasSshPorOlt.credencial(entorno, prefijo, "_USUARIO"), com.guajiranet.migradoronu.ensamblaje.consola.ConsolasSshPorOlt.credencial(entorno, prefijo, "_CLAVE"),
                     entorno.getProperty(prefijo + "_HUELLA"), puertoOnu, ontId);
         }
     }
@@ -114,8 +114,8 @@ public class MigradorWebApplication {
             System.out.println((real ? "== CAMBIO REAL" : "== SIMULACIÓN") + " en " + codigo + " " + args[2] + " ONT " + ont
                     + ": perfil 2 -> 3 y guardar");
             var resultado = new CambioDePerfilUnaOnu(contexto.getBean(AuditTrailPort.class)).ejecutar(objetivo, real,
-                    () -> new ConsolaSsh(SesionConsolaOlt.abrir(olt.direccion(), olt.puerto(), entorno.getProperty(prefijo + "_USUARIO"),
-                            entorno.getProperty(prefijo + "_CLAVE"), entorno.getProperty(prefijo + "_HUELLA"),
+                    () -> new ConsolaSsh(SesionConsolaOlt.abrir(olt.direccion(), olt.puerto(), com.guajiranet.migradoronu.ensamblaje.consola.ConsolasSshPorOlt.credencial(entorno, prefijo, "_USUARIO"),
+                            com.guajiranet.migradoronu.ensamblaje.consola.ConsolasSshPorOlt.credencial(entorno, prefijo, "_CLAVE"), entorno.getProperty(prefijo + "_HUELLA"),
                             Duration.ofSeconds(10), Duration.ofSeconds(90))));
             for (var paso : resultado.pasos()) {
                 System.out.println();

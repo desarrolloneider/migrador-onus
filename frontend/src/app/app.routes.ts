@@ -1,5 +1,5 @@
 import { Routes } from '@angular/router';
-import { authGuard, cambioDeClaveGuard, invitadoGuard } from './core/guards/auth.guard';
+import { authGuard, cambioDeClaveGuard, invitadoGuard, moduloGuard } from './core/guards/auth.guard';
 import { ShellComponent } from './layout/shell.component';
 
 const SUFIJO = ' · Migrador de ONUs';
@@ -30,54 +30,66 @@ export const routes: Routes = [
         loadComponent: () => import('./features/inicio/inicio.component').then((m) => m.InicioComponent),
       },
       {
-        path: 'lotes',
+        path: 'lotes', canActivate: [moduloGuard], data: { modulo: 'LOTES' },
         pathMatch: 'full',
         title: 'Lotes' + SUFIJO,
         loadComponent: () => import('./features/lotes/pages/lista-lotes/lista-lotes.component').then((m) => m.ListaLotesComponent),
       },
       {
-        path: 'lotes/nuevo',
+        path: 'lotes/nuevo', canActivate: [moduloGuard], data: { modulo: 'LOTES' },
         title: 'Nuevo lote' + SUFIJO,
         loadComponent: () => import('./features/lotes/pages/nuevo-lote/nuevo-lote.component').then((m) => m.NuevoLoteComponent),
       },
       {
-        path: 'lotes/:id/vista-previa',
+        path: 'lotes/:id/vista-previa', canActivate: [moduloGuard], data: { modulo: 'LOTES' },
         title: 'Vista previa' + SUFIJO,
         loadComponent: () => import('./features/lotes/pages/vista-previa/vista-previa.component').then((m) => m.VistaPreviaComponent),
       },
       {
-        path: 'lotes/:id',
+        path: 'lotes/:id', canActivate: [moduloGuard], data: { modulo: 'LOTES' },
         title: 'Ejecución del lote' + SUFIJO,
         loadComponent: () => import('./features/lotes/pages/ejecucion-lote/ejecucion-lote.component').then((m) => m.EjecucionLoteComponent),
       },
       {
-        path: 'ejecuciones/:id',
+        path: 'ejecuciones/:id', canActivate: [moduloGuard], data: { modulo: 'LOTES' },
         title: 'Detalle de ONU' + SUFIJO,
         loadComponent: () => import('./features/ejecuciones/pages/detalle-onu/detalle-onu.component').then((m) => m.DetalleOnuComponent),
       },
       {
-        path: 'prueba-individual',
+        path: 'prueba-individual', canActivate: [moduloGuard], data: { modulo: 'LOTES' },
         title: 'Prueba individual' + SUFIJO,
         loadComponent: () =>
           import('./features/prueba-individual/prueba-individual.component').then((m) => m.PruebaIndividualComponent),
       },
       {
-        path: 'historial',
+        path: 'historial', canActivate: [moduloGuard], data: { modulo: 'HISTORIAL' },
         title: 'Historial de ONUs' + SUFIJO,
         loadComponent: () => import('./features/historial/pages/historial/historial.component').then((m) => m.HistorialComponent),
       },
       {
-        path: 'fallidas',
+        path: 'fallidas', canActivate: [moduloGuard], data: { modulo: 'FALLIDAS' },
         title: 'Fallidas por revisar' + SUFIJO,
         loadComponent: () => import('./features/ejecuciones/pages/fallidas/fallidas.component').then((m) => m.FallidasComponent),
       },
       {
-        path: 'auditoria',
+        path: 'auditoria', canActivate: [moduloGuard], data: { modulo: 'AUDITORIA' },
         title: 'Auditoría' + SUFIJO,
         loadComponent: () => import('./features/auditoria/pages/auditoria/auditoria.component').then((m) => m.AuditoriaComponent),
       },
       {
-        path: 'configuracion',
+        path: 'usuarios',
+        canActivate: [moduloGuard], data: { administrador: true },
+        title: 'Gestión de usuarios' + SUFIJO,
+        loadComponent: () => import('./features/usuarios/pages/lista-usuarios.component').then((m) => m.ListaUsuariosComponent),
+      },
+      {
+        path: 'usuarios/:id',
+        canActivate: [moduloGuard], data: { administrador: true },
+        title: 'Usuario' + SUFIJO,
+        loadComponent: () => import('./features/usuarios/pages/ficha-usuario.component').then((m) => m.FichaUsuarioComponent),
+      },
+      {
+        path: 'configuracion', canActivate: [moduloGuard], data: { modulo: 'CONFIGURACION' },
         title: 'Configuración' + SUFIJO,
         loadComponent: () =>
           import('./features/configuracion/pages/configuracion/configuracion.component').then((m) => m.ConfiguracionComponent),

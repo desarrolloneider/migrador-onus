@@ -9,6 +9,7 @@ import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { Router } from '@angular/router';
 import { filter, finalize, map, switchMap } from 'rxjs';
+import { AuthService } from '../../core/auth/auth.service';
 import { mensajeDeError } from '../../core/api/errores';
 import { ConfirmarDialogoComponent, DatosConfirmacion } from '../../shared/dialogos/confirmar-dialogo.component';
 import { EstadoChipComponent } from '../../shared/estado-chip/estado-chip.component';
@@ -85,8 +86,8 @@ import { VistaPrevia } from '../lotes/models/lote.model';
                 <p class="aviso aviso-simulado"><mat-icon>science</mat-icon> <span>{{ v.motivoSoloSimulacion }}</span></p>
               }
               <div class="acciones">
-                <button mat-stroked-button (click)="ejecutar(true)" [disabled]="ejecutando()"><mat-icon>science</mat-icon> Simular</button>
-                <button mat-flat-button (click)="ejecutar(false)" [disabled]="ejecutando() || v.soloSimulacion"
+                <button mat-stroked-button [class.oculto-sin-permiso]="!puedeEjecutar" (click)="ejecutar(true)" [disabled]="ejecutando()"><mat-icon>science</mat-icon> Simular</button>
+                <button mat-flat-button [class.oculto-sin-permiso]="!puedeEjecutar" (click)="ejecutar(false)" [disabled]="ejecutando() || v.soloSimulacion"
                         [matTooltip]="v.soloSimulacion ? 'Falta decidir PC-36: solo se puede simular' : ''"><mat-icon>play_arrow</mat-icon> Ejecutar</button>
               </div>
             }
@@ -108,6 +109,8 @@ import { VistaPrevia } from '../lotes/models/lote.model';
   `,
 })
 export class PruebaIndividualComponent {
+  /** Sin el módulo "Ejecutar cambios" no se muestran los botones de simular, ejecutar, detener ni reintentar. */
+  protected readonly puedeEjecutar = inject(AuthService).puede('EJECUTAR');
   private readonly lotesService = inject(LotesService);
   private readonly dialogo = inject(MatDialog);
   private readonly router = inject(Router);

@@ -113,10 +113,10 @@ export class AlmacenDeEjemplo {
   private readonly registros: RegistroSmartOlt[] = [];
   private readonly contratos: ContratoWispro[] = [];
   private readonly olts: Olt[] = [
-    { id: 1, codigo: 'RIOHACHA01', nombre: 'OLT Riohacha Centro', direccion: '10.20.0.11', puerto: 22, protocolo: 'SSH', tarjetasPermitidas: ['0/0', '0/1'], accesoConfigurado: true },
-    { id: 2, codigo: 'MAICAO01', nombre: 'OLT Maicao', direccion: '10.20.1.11', puerto: 22, protocolo: 'SSH', tarjetasPermitidas: ['0/1'], accesoConfigurado: true },
-    { id: 3, codigo: 'URIBIA01', nombre: 'OLT Uribia', direccion: '10.20.2.11', puerto: 23, protocolo: 'TELNET', tarjetasPermitidas: [], accesoConfigurado: true },
-    { id: 4, codigo: 'FONSECA01', nombre: 'OLT Fonseca', direccion: null, puerto: null, protocolo: null, tarjetasPermitidas: ['0/0'], accesoConfigurado: false },
+    { id: 1, codigo: 'RIOHACHA01', nombre: 'OLT Riohacha Centro', direccion: '10.20.0.11', puerto: 22, protocolo: 'SSH', tarjetasPermitidas: ['0/0', '0/1'], accesoConfigurado: true, huellaSsh: null },
+    { id: 2, codigo: 'MAICAO01', nombre: 'OLT Maicao', direccion: '10.20.1.11', puerto: 22, protocolo: 'SSH', tarjetasPermitidas: ['0/1'], accesoConfigurado: true, huellaSsh: null },
+    { id: 3, codigo: 'URIBIA01', nombre: 'OLT Uribia', direccion: '10.20.2.11', puerto: 23, protocolo: 'TELNET', tarjetasPermitidas: [], accesoConfigurado: true, huellaSsh: null },
+    { id: 4, codigo: 'FONSECA01', nombre: 'OLT Fonseca', direccion: null, puerto: null, protocolo: null, tarjetasPermitidas: ['0/0'], accesoConfigurado: false, huellaSsh: null },
   ];
   private readonly parametros: Parametro[] = parametrosIniciales();
   private revisionParametros = 1;

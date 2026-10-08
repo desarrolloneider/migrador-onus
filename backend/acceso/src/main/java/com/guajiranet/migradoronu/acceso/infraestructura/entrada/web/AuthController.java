@@ -20,6 +20,7 @@ import com.guajiranet.migradoronu.acceso.dominio.ResultadoAutenticacion.Motivo;
 import com.guajiranet.migradoronu.acceso.dominio.Usuario;
 import com.guajiranet.migradoronu.acceso.puertos.entrada.AuthenticatePort;
 import com.guajiranet.migradoronu.acceso.puertos.entrada.OwnCredentialsPort;
+import com.guajiranet.migradoronu.acceso.puertos.entrada.QueryUsersPort;
 import com.guajiranet.migradoronu.comun.errores.ErrorDeNegocio;
 import com.guajiranet.migradoronu.comun.seguridad.UsuarioAutenticado;
 
@@ -38,7 +39,9 @@ public class AuthController {
     public record LoginRequest(String usuario, String contrasena) {
     }
 
-    public record UsuarioSesion(long id, String usuario, String nombre, boolean debeCambiarClave) {
+    /** @param modulos los módulos que puede usar (todos si es administrador); la pantalla muestra solo esos */
+    public record UsuarioSesion(long id, String usuario, String nombre, boolean debeCambiarClave, boolean administrador,
+                                List<String> modulos) {
     }
 
     public record CambiarCredencialesRequest(String usuarioNuevo, String claveActual, String claveNueva) {
@@ -50,14 +53,20 @@ public class AuthController {
 
     private final OwnCredentialsPort credenciales;
 
-    public AuthController(AuthenticatePort autenticacion, SecurityContextRepository contextos, OwnCredentialsPort credenciales) {
+    private final QueryUsersPort usuarios;
+
+    public AuthController(AuthenticatePort autenticacion, SecurityContextRepository contextos, OwnCredentialsPort credenciales,
+                          QueryUsersPort usuarios) {
         this.autenticacion = autenticacion;
         this.contextos = contextos;
         this.credenciales = credenciales;
+        this.usuarios = usuarios;
     }
 
     private UsuarioSesion de(UsuarioAutenticado u) {
-        return new UsuarioSesion(u.id(), u.usuario(), u.nombre(), credenciales.debeCambiarClave(u.id()));
+        var permisos = usuarios.permisos(u.id());
+        return new UsuarioSesion(u.id(), u.usuario(), u.nombre(), credenciales.debeCambiarClave(u.id()), permisos.administrador(),
+                permisos.efectivos().stream().map(Enum::name).sorted().toList());
     }
 
     /** Cambia la contraseña propia y, si se pide, el nombre de usuario. La sesión sigue abierta con el nombre nuevo. */

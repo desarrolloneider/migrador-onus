@@ -14,6 +14,7 @@ import com.guajiranet.migradoronu.acceso.aplicacion.AdministrarUsuariosUseCase;
 import com.guajiranet.migradoronu.acceso.aplicacion.AutenticarUseCase;
 import com.guajiranet.migradoronu.acceso.aplicacion.ConsultarUsuariosUseCase;
 import com.guajiranet.migradoronu.acceso.aplicacion.CredencialesPropiasUseCase;
+import com.guajiranet.migradoronu.acceso.aplicacion.GestionUsuariosUseCase;
 import com.guajiranet.migradoronu.acceso.infraestructura.salida.persistencia.JdbcUserRepositoryAdapter;
 import com.guajiranet.migradoronu.acceso.infraestructura.salida.seguridad.Argon2PasswordHasherAdapter;
 import com.guajiranet.migradoronu.acceso.puertos.entrada.AuthenticatePort;
@@ -74,5 +75,10 @@ public class AccesoConfig {
                 credenciales.prepararUsuarioInicial(usuario, clave.toCharArray());
             }
         };
+    }
+
+    @Bean
+    GestionUsuariosUseCase gestionUsuarios(UserRepositoryPort usuarios, PasswordHasherPort huellas, AuditTrailPort auditoria, Clock reloj) {
+        return new GestionUsuariosUseCase(usuarios, huellas, auditoria, reloj);
     }
 }

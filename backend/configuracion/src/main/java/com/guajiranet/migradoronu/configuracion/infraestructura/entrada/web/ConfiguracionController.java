@@ -40,7 +40,14 @@ public class ConfiguracionController {
     }
 
     public record OltDto(long id, String codigo, String nombre, String direccion, Integer puerto, String protocolo,
-                         List<String> tarjetasPermitidas, boolean accesoConfigurado) {
+                         List<String> tarjetasPermitidas, boolean accesoConfigurado,
+                         String huellaSsh) {
+    }
+
+    public record CambiarAccesoRequest(String direccion, Integer puerto, String protocolo) {
+    }
+
+    public record FijarHuellaRequest(String huella) {
     }
 
     public record CambiarParametroRequest(Object valor) {
@@ -80,7 +87,20 @@ public class ConfiguracionController {
 
     @GetMapping("/olts")
     public List<OltDto> listarOlts() {
-        return consultas.olts().stream().map(ConfiguracionController::dto).toList();
+        return consultas.olts().stream().map(this::dto).toList();
+    }
+
+    @PutMapping("/olts/{oltId}/access")
+    public OltDto cambiarAcceso(@PathVariable long oltId, @RequestBody CambiarAccesoRequest cuerpo,
+                                @AuthenticationPrincipal UsuarioAutenticado usuario, HttpServletRequest request) {
+        return dto(olts.cambiarAcceso(oltId, cuerpo.direccion(), cuerpo.puerto(), cuerpo.protocolo(), usuario.id(),
+                request.getRemoteAddr()));
+    }
+
+    @PutMapping("/olts/{oltId}/fingerprint")
+    public void fijarHuella(@PathVariable long oltId, @RequestBody FijarHuellaRequest cuerpo,
+                            @AuthenticationPrincipal UsuarioAutenticado usuario, HttpServletRequest request) {
+        olts.fijarHuella(oltId, cuerpo == null ? null : cuerpo.huella(), usuario.id(), request.getRemoteAddr());
     }
 
     @PutMapping("/olts/{oltId}/boards")
@@ -98,9 +118,9 @@ public class ConfiguracionController {
                 d.tipo().name(), d.opciones(), d.minimo(), d.maximo(), d.editable(), actualizadoPor, p.actualizadoEn());
     }
 
-    private static OltDto dto(OltSettings o) {
+    private OltDto dto(OltSettings o) {
         return new OltDto(o.id(), o.codigo(), o.nombre(), o.direccion(), o.puerto(),
                 o.protocolo() == null ? null : o.protocolo().name(), List.copyOf(o.tarjetas().values()),
-                o.consoleAccessConfigured());
+                o.consoleAccessConfigured(), consultas.huellaSsh(o.codigo()).orElse(null));
     }
 }

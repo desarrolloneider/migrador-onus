@@ -35,6 +35,19 @@ export interface Olt {
   protocolo: ProtocoloConsola | null;
   tarjetasPermitidas: string[];
   accesoConfigurado: boolean;
+  /** La huella SSH fijada (del .env o de Configuración). Sin ella no se conecta. */
+  huellaSsh: string | null;
+}
+
+/** Resultado de probar la consola de una OLT: solo lectura. */
+export interface PruebaDeConexion {
+  conecto: boolean;
+  huellaPresentada: string | null;
+  huellaFijada: string | null;
+  huellaCoincide: boolean;
+  credencialesPresentes: boolean;
+  perfiles: string[];
+  mensaje: string;
 }
 
 export interface Configuracion {
