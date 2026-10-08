@@ -10,9 +10,11 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import com.guajiranet.migradoronu.conciliacion.aplicacion.ClasificarOnusUseCase;
+import com.guajiranet.migradoronu.conciliacion.aplicacion.ConsultarOnusDeOlt;
 import com.guajiranet.migradoronu.conciliacion.infraestructura.salida.smartolt.SmartOltInventoryAdapter;
 import com.guajiranet.migradoronu.conciliacion.infraestructura.salida.wispro.WisproDirectoryAdapter;
 import com.guajiranet.migradoronu.conciliacion.puertos.entrada.ClassifyOnusPort;
+import com.guajiranet.migradoronu.conciliacion.puertos.salida.OltProfilesQueryPort;
 import com.guajiranet.migradoronu.conciliacion.puertos.salida.OltSettingsQueryPort;
 import com.guajiranet.migradoronu.conciliacion.puertos.salida.OnuParticipationQueryPort;
 import com.guajiranet.migradoronu.conciliacion.puertos.salida.TargetProfilePort;
@@ -27,14 +29,28 @@ import com.guajiranet.migradoronu.integraciones.wispro.WisproClient;
 public class ConciliacionConfig {
 
     @Bean
-    ClassifyOnusPort classifyOnus(OltSettingsQueryPort olts, OnuParticipationQueryPort participacion, TargetProfilePort perfil, Clock reloj,
-                                  @Value("${SMARTOLT_BASE_URL:}") String smartOltUrl, @Value("${SMARTOLT_API_TOKEN:}") String smartOltToken,
-                                  @Value("${WISPRO_BASE_URL:}") String wisproUrl, @Value("${WISPRO_API_TOKEN:}") String wisproToken) {
-        Duration tiempo = Duration.ofSeconds(30);
-        Supplier<SmartOltClient> smartOlt = unaVez(() -> new SmartOltClient(smartOltUrl, smartOltToken, tiempo));
-        Supplier<WisproClient> wispro = unaVez(() -> new WisproClient(wisproUrl, wisproToken, tiempo));
-        return new ClasificarOnusUseCase(new SmartOltInventoryAdapter(smartOlt, reloj), new WisproDirectoryAdapter(wispro, reloj),
-                olts, participacion, perfil::perfilDestino, Set.of("Huawei"));
+    SmartOltInventoryAdapter smartOltInventario(Clock reloj, @Value("${SMARTOLT_BASE_URL:}") String url,
+                                                @Value("${SMARTOLT_API_TOKEN:}") String token) {
+        return new SmartOltInventoryAdapter(unaVez(() -> new SmartOltClient(url, token, Duration.ofSeconds(60))), reloj);
+    }
+
+    @Bean
+    ConsultarOnusDeOlt consultarOnusDeOlt(SmartOltInventoryAdapter smartOlt, OltProfilesQueryPort perfilesOlt) {
+        return new ConsultarOnusDeOlt(smartOlt, perfilesOlt);
+    }
+
+    @Bean
+    WisproDirectoryAdapter wisproDirectorio(Clock reloj, @Value("${WISPRO_BASE_URL:}") String url,
+                                            @Value("${WISPRO_API_TOKEN:}") String token) {
+        return new WisproDirectoryAdapter(unaVez(() -> new WisproClient(url, token, Duration.ofSeconds(60))), reloj);
+    }
+
+    @Bean
+    ClassifyOnusPort classifyOnus(SmartOltInventoryAdapter smartOltInventario, WisproDirectoryAdapter wisproDirectorio, OltProfilesQueryPort perfilesOlt,
+                                  @Value("${migrador.perfil-origen:GUAJIRANET}") String perfilOrigen,
+                                  OltSettingsQueryPort olts, OnuParticipationQueryPort participacion, TargetProfilePort perfil) {
+        return new ClasificarOnusUseCase(smartOltInventario, wisproDirectorio,
+                olts, participacion, perfil::perfilDestino, Set.of("Huawei"), perfilesOlt, () -> perfilOrigen);
     }
 
     private static <T> Supplier<T> unaVez(Supplier<T> fabrica) {

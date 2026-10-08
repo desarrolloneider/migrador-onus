@@ -14,4 +14,6 @@ public interface QueryBatchPort {
     Optional<BatchView> findRunning();
 
     List<BatchView> findRecent(int limit);
+
+    Optional<BatchView> findByNumero(String numero);
 }

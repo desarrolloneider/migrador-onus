@@ -1,5 +1,5 @@
 import { Routes } from '@angular/router';
-import { authGuard, invitadoGuard } from './core/guards/auth.guard';
+import { authGuard, cambioDeClaveGuard, invitadoGuard } from './core/guards/auth.guard';
 import { ShellComponent } from './layout/shell.component';
 
 const SUFIJO = ' · Migrador de ONUs';
@@ -13,6 +13,12 @@ export const routes: Routes = [
     loadComponent: () => import('./features/auth/login/login.component').then((m) => m.LoginComponent),
   },
   {
+    path: 'cambiar-clave',
+    title: 'Cambiar contraseña' + SUFIJO,
+    canActivate: [cambioDeClaveGuard],
+    loadComponent: () => import('./features/auth/cambiar-clave/cambiar-clave.component').then((m) => m.CambiarClaveComponent),
+  },
+  {
     path: '',
     component: ShellComponent,
     canActivate: [authGuard],
@@ -22,6 +28,12 @@ export const routes: Routes = [
         path: 'inicio',
         title: 'Inicio' + SUFIJO,
         loadComponent: () => import('./features/inicio/inicio.component').then((m) => m.InicioComponent),
+      },
+      {
+        path: 'lotes',
+        pathMatch: 'full',
+        title: 'Lotes' + SUFIJO,
+        loadComponent: () => import('./features/lotes/pages/lista-lotes/lista-lotes.component').then((m) => m.ListaLotesComponent),
       },
       {
         path: 'lotes/nuevo',

@@ -30,4 +30,9 @@ public class RunSchedulerModuleAdapter implements RunSchedulerPort {
                 .toList();
         scheduler.schedule(new ScheduleOnuRunsCommand(loteId, new ProcedureVersion(procedimientoVersion), items));
     }
+
+    @Override
+    public void yaTienenElPerfil(long loteId, long usuarioId, List<String> sns) {
+        scheduler.resolverFallidas(loteId, usuarioId, sns);
+    }
 }

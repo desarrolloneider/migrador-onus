@@ -12,6 +12,10 @@ public enum ExclusionReason {
     EXC_SIN_IP_SMARTOLT("K5"),
     EXC_IP_NO_EN_WISPRO("K6"),
     EXC_IP_EN_VARIOS_CONTRATOS("K7"),
+    /** La OLT dice que la ONU tiene otro perfil (o ninguno): solo se cambian las del perfil origen. */
+    EXC_OTRO_PERFIL("K9"),
+    /** La OLT tiene acceso por consola pero no se pudo leer qué perfil tiene cada ONU: no se adivina (RN-13). */
+    EXC_PERFIL_NO_LEIDO("K9"),
     EXC_TARJETA_NO_PERMITIDA("K8"),
     EXC_OLT_SIN_ACCESO_CONFIGURADO("K8"),
     EXC_EN_OTRO_LOTE("K10"),

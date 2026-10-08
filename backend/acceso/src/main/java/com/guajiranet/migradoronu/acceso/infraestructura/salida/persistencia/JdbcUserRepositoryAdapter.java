@@ -105,6 +105,22 @@ public class JdbcUserRepositoryAdapter implements UserRepositoryPort {
                 .param("p", patron).query(Long.class).list());
     }
 
+    @Override
+    public boolean debeCambiarClave(long id) {
+        return jdbc.sql("SELECT debe_cambiar_clave FROM usuarios WHERE id = ?").param(id).query(Boolean.class).optional().orElse(false);
+    }
+
+    @Override
+    public void cambiarCredenciales(long id, String usuario, String hashClave, boolean debeCambiarClave) {
+        try {
+            jdbc.sql("UPDATE usuarios SET usuario = ?, hash_clave = ?, debe_cambiar_clave = ?, intentos_fallidos = 0, bloqueado_hasta = NULL WHERE id = ?")
+                    .params(usuario, hashClave, debeCambiarClave, id)
+                    .update();
+        } catch (DuplicateKeyException e) {
+            throw ErrorDeNegocio.conflicto("El usuario " + usuario + " ya existe.");
+        }
+    }
+
     private Usuario aUsuario(ResultSet rs, int fila) throws SQLException {
         return new Usuario(
                 rs.getLong("id"),

@@ -5,14 +5,17 @@ import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { MatDialog } from '@angular/material/dialog';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
+import { MatSnackBar } from '@angular/material/snack-bar';
+import { DecimalPipe } from '@angular/common';
 import { Router, RouterLink } from '@angular/router';
-import { auditTime, filter, forkJoin, interval, startWith, switchMap } from 'rxjs';
+import { EMPTY, auditTime, catchError, filter, finalize, forkJoin, interval, map, of, startWith, switchMap } from 'rxjs';
 import { mensajeDeError } from '../../../../core/api/errores';
 import { TiempoRealService } from '../../../../core/realtime/tiempo-real.service';
 import { ConfirmarDialogoComponent, DatosConfirmacion } from '../../../../shared/dialogos/confirmar-dialogo.component';
 import { EstadoChipComponent } from '../../../../shared/estado-chip/estado-chip.component';
 import { ESTADOS_EJECUCION, ESTADOS_LOTE, INDIVIDUAL, NOMBRES_PASO, SIMULACION, Tono, describirFiltros } from '../../../../shared/estados';
 import { DuracionPipe, HoraColombiaPipe } from '../../../../shared/formato/formato.pipes';
+import { EjecucionesService } from '../../../ejecuciones/data/ejecuciones.service';
 import { EjecucionOnu, EstadoEjecucion } from '../../../ejecuciones/models/ejecucion.model';
 import { LotesService } from '../../data/lotes.service';
 import { Lote } from '../../models/lote.model';
@@ -31,7 +34,7 @@ interface Contador {
   selector: 'app-ejecucion-lote',
   standalone: true,
   imports: [RouterLink, MatButtonModule, MatButtonToggleModule, MatIconModule, MatProgressBarModule, EstadoChipComponent,
-    HoraColombiaPipe, DuracionPipe],
+    HoraColombiaPipe, DuracionPipe, DecimalPipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="pagina">
@@ -75,23 +78,89 @@ interface Contador {
         @if (l.estado === 'CONFIRMADO') {
           <p class="aviso"><mat-icon>schedule</mat-icon> <span>Confirmado: sus ONUs esperan turno. Si el proceso ejecutor está detenido, empieza cuando vuelva.</span></p>
         }
-        @if (l.estado === 'TERMINADO') {
-          <p class="aviso aviso-exito"><mat-icon>check_circle</mat-icon> <span>Terminado: las {{ l.contadores.completadas }} ONUs quedaron {{ l.simulacion ? 'simuladas sin fallas' : 'con GUAJIRANET1, verificado en la OLT' }}.</span></p>
+        @if (l.simulacion && (l.estado === 'TERMINADO' || l.estado === 'TERMINADO_CON_FALLAS')) {
+          <div class="aviso aviso-real">
+            <mat-icon>play_circle</mat-icon>
+            <span>¿Salió bien la simulación? Arma una vista previa nueva con los mismos filtros y ejecútala de verdad. SmartOLT, la OLT y Wispro se vuelven a leer antes de cambiar nada.</span>
+            <button mat-flat-button type="button" (click)="repetirDeVerdad(l.id)" [disabled]="repitiendo()">
+              <mat-icon>play_arrow</mat-icon> {{ repitiendo() ? 'Armando…' : 'Ejecutar de verdad' }}
+            </button>
+          </div>
+          @if (repitiendo()) { <mat-progress-bar mode="indeterminate" /> }
+          @if (errorRepetir()) { <p class="aviso aviso-error" role="alert"><mat-icon>error</mat-icon> {{ errorRepetir() }}</p> }
         }
-        @if (l.estado === 'TERMINADO_CON_FALLAS') {
-          <p class="aviso aviso-advertencia"><mat-icon>error</mat-icon>
-            <span>Terminado con fallas: {{ l.contadores.fallidas }} ONU(s) se detuvieron en un paso y esperan revisión en <a routerLink="/fallidas">Fallidas por revisar</a>.</span></p>
-        }
-
         <section class="rejilla-kpi">
           @for (c of contadores(); track c.etiqueta) {
             <div class="kpi tono-{{ c.tono }}"><span class="etiqueta"><mat-icon>{{ c.icono }}</mat-icon> {{ c.etiqueta }}</span><span class="valor">{{ c.valor }}</span></div>
           }
         </section>
-        <div class="progreso">
-          <mat-progress-bar mode="determinate" [value]="avance()" />
-          <span>{{ terminadas() }} de {{ l.contadores.entran }} ONUs trabajadas</span>
-        </div>
+        <section class="tarjeta avance-lote">
+          <div class="avance-cabecera">
+            <div class="avance-cifra"><span class="grande">{{ avance() | number: '1.0-0' }}%</span>
+              <span class="secundario">{{ terminadas() }} de {{ l.contadores.entran }} ONUs trabajadas</span></div>
+            <div class="tiempos">
+              <span><mat-icon>timer</mat-icon> {{ transcurrido() === null ? '—' : (transcurrido() | duracion) }}</span>
+              @if (restanteMs() !== null) { <span><mat-icon>hourglass_bottom</mat-icon> faltan ~{{ restanteMs() | duracion }}</span> }
+              @if (promedioMs() !== null) { <span><mat-icon>speed</mat-icon> {{ promedioMs() | duracion }} por ONU</span> }
+            </div>
+          </div>
+          <div class="barra-segmentada" role="img" [attr.aria-label]="terminadas() + ' de ' + l.contadores.entran + ' ONUs trabajadas'">
+            <span class="seg tono-exito" [style.width.%]="porcentaje(l.contadores.completadas)" title="Completadas"></span>
+            <span class="seg tono-error" [style.width.%]="porcentaje(l.contadores.fallidas)" title="Fallidas"></span>
+            <span class="seg tono-aviso" [style.width.%]="porcentaje(l.contadores.excluidasAlEjecutar + l.contadores.noIniciadas)" title="Excluidas o no iniciadas"></span>
+            <span class="seg tono-progreso en-curso" [style.width.%]="porcentaje(l.contadores.enCurso)" title="En curso"></span>
+          </div>
+          <div class="leyenda">
+            <span><i class="punto tono-exito"></i> Completadas {{ l.contadores.completadas }}</span>
+            <span><i class="punto tono-error"></i> Fallidas {{ l.contadores.fallidas }}</span>
+            <span><i class="punto tono-aviso"></i> Excluidas {{ l.contadores.excluidasAlEjecutar + l.contadores.noIniciadas }}</span>
+            <span><i class="punto tono-progreso"></i> En curso {{ l.contadores.enCurso }}</span>
+            <span><i class="punto tono-neutro"></i> Pendientes {{ l.contadores.pendientes }}</span>
+          </div>
+        </section>
+
+        @if (enCurso(); as actual) {
+          <section class="tarjeta trabajando">
+            <div class="pulso"><mat-icon class="girando">autorenew</mat-icon></div>
+            <div class="trabajando-datos">
+              <span class="secundario">Trabajando ahora</span>
+              <strong class="mono">{{ actual.sn }}</strong>
+              <span>{{ actual.cliente ?? 'Cliente sin nombre' }} · {{ actual.olt }} {{ actual.tarjeta }}/{{ actual.pon }} ONT {{ actual.onuId }}</span>
+            </div>
+            <ol class="pasos-vivos" aria-label="Pasos del cambio">
+              @for (paso of pasosVivos; track paso.codigo) {
+                <li [class.hecho]="pasoHecho(actual, paso.codigo)" [class.actual]="actual.pasoActual === paso.codigo">
+                  <mat-icon>{{ paso.icono }}</mat-icon><span>{{ paso.nombre }}</span>
+                </li>
+              }
+            </ol>
+          </section>
+        }
+
+        @if (esFinal(l.estado)) {
+          <section class="tarjeta resumen-final" [class.con-fallas]="fallidas().length > 0">
+            <mat-icon class="icono-final">{{ fallidas().length > 0 ? 'report' : 'task_alt' }}</mat-icon>
+            <div class="resumen-texto">
+              <h2>{{ fallidas().length > 0 ? 'Terminó con fallas' : l.contadores.fallidas > 0 ? 'Terminó con fallas, ya resueltas' : (l.simulacion ? 'Simulación terminada' : 'Lote terminado') }}</h2>
+              <p>
+                <strong class="ok">{{ l.contadores.completadas }}</strong> {{ l.simulacion ? 'simuladas' : 'cambiadas a GUAJIRANET1' }} ·
+                <strong class="ko">{{ l.contadores.fallidas }}</strong> fallidas
+                @if (resueltasDespues()) { <span class="ok">({{ resueltasDespues() }} ya resueltas después)</span> } ·
+                <strong>{{ l.contadores.excluidasAlEjecutar + l.contadores.noIniciadas }}</strong> excluidas
+              </p>
+            </div>
+            <div class="resumen-acciones">
+              @if (fallidas().length) {
+                <button mat-flat-button type="button" (click)="reintentarFallidas()" [disabled]="reintentandoTodas() || reintentando() !== null">
+                  <mat-icon>replay</mat-icon> {{ reintentandoTodas() ? 'Reintentando…' : 'Reintentar las ' + fallidas().length + ' fallidas' }}
+                </button>
+              }
+              <a mat-stroked-button [routerLink]="['/auditoria']" [queryParams]="{ lote: l.numero }"><mat-icon>policy</mat-icon> Ver en auditoría</a>
+              <a mat-stroked-button routerLink="/lotes/nuevo"><mat-icon>add</mat-icon> Nuevo lote</a>
+            </div>
+            @if (reintentandoTodas()) { <mat-progress-bar mode="indeterminate" class="ancho-completo" /> }
+          </section>
+        }
 
         <div class="controles">
           <mat-button-toggle-group [value]="filtro()" (change)="filtro.set($event.value)" aria-label="Filtrar ONUs">
@@ -115,12 +184,27 @@ interface Contador {
                   <td>{{ e.cliente ?? '—' }}</td>
                   <td class="secundario">{{ e.olt }} · {{ e.tarjeta }} · PON {{ e.pon }} · ID {{ e.onuId }}</td>
                   <td><app-estado-chip [presentacion]="estadosEjecucion[e.estado]" />
-                    @if (e.estado === 'FALLIDA' && e.revisada) { <div class="secundario">revisada</div> }</td>
+                    @if (e.estado === 'FALLIDA' && e.resueltaEnLote) {
+                      <div class="resuelta"><mat-icon>task_alt</mat-icon> resuelta</div>
+                    } @else if (e.estado === 'FALLIDA' && e.revisada) { <div class="secundario">revisada</div> }</td>
                   <td>@if (e.pasoActual) { <span class="mono">{{ e.pasoActual }}</span><span class="secundario"> · {{ nombrePaso(e) }}</span> } @else { — }</td>
                   <td class="num">{{ e.duracionMs | duracion }}</td>
                   <td class="mensaje" [class.texto-falla]="e.estado === 'FALLIDA'">
                     @if (e.codigo) { <span class="codigo-motivo">{{ e.codigo }}</span> }
                     {{ e.mensaje ?? '' }}
+                    @if (e.estado === 'FALLIDA' && e.resueltaEnLote) {
+                      <div class="reintento">
+                        <a class="enlace-resuelta" [routerLink]="['/lotes', e.resueltaEnLoteId]" (click)="$event.stopPropagation()">
+                          <mat-icon>task_alt</mat-icon> Resuelta en {{ e.resueltaEnLote }}</a>
+                      </div>
+                    } @else if (e.estado === 'FALLIDA') {
+                      <div class="reintento">
+                        <button mat-stroked-button type="button" [disabled]="reintentando() !== null"
+                                (click)="$event.stopPropagation(); $event.preventDefault(); reintentar(e)">
+                          <mat-icon>replay</mat-icon> {{ reintentando() === e.id ? 'Reintentando…' : 'Reintentar' }}
+                        </button>
+                      </div>
+                    }
                   </td>
                 </tr>
               } @empty {
@@ -133,6 +217,49 @@ interface Contador {
     </div>
   `,
   styles: `
+    .resuelta { display: inline-flex; align-items: center; gap: 2px; font-size: 12px; color: var(--color-exito); }
+    .resuelta mat-icon, .enlace-resuelta mat-icon { font-size: 16px; width: 16px; height: 16px; }
+    .enlace-resuelta { display: inline-flex; align-items: center; gap: 4px; font-size: 12.5px; color: var(--color-exito); text-decoration: none; }
+    .enlace-resuelta:hover { text-decoration: underline; }
+    .avance-lote { margin-bottom: 16px; }
+    .avance-cabecera { display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 12px; margin-bottom: 10px; }
+    .avance-cifra { display: flex; flex-direction: column; }
+    .avance-cifra .grande { font-size: 34px; font-weight: 700; line-height: 1; }
+    .tiempos { display: flex; gap: 16px; flex-wrap: wrap; color: var(--mat-sys-on-surface-variant); font-size: 13px; }
+    .tiempos span { display: inline-flex; align-items: center; gap: 4px; }
+    .tiempos mat-icon { font-size: 18px; width: 18px; height: 18px; }
+    .barra-segmentada { display: flex; height: 14px; border-radius: 7px; overflow: hidden; background: var(--mat-sys-surface-container-high); }
+    .barra-segmentada .seg { background: var(--color-tono); transition: width .6s cubic-bezier(.2,.8,.2,1); }
+    .barra-segmentada .en-curso { background-image: linear-gradient(90deg, transparent, rgb(255 255 255 / .35), transparent);
+      background-size: 200% 100%; animation: brillo 1.4s linear infinite; background-color: var(--color-tono); }
+    @keyframes brillo { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+    .leyenda { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 10px; font-size: 12.5px; color: var(--mat-sys-on-surface-variant); }
+    .leyenda .punto { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--color-tono); margin-right: 4px; vertical-align: -1px; }
+    .trabajando { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 16px;
+      border-color: color-mix(in srgb, var(--color-progreso) 50%, transparent); }
+    .pulso { width: 48px; height: 48px; border-radius: 50%; display: grid; place-items: center; flex: none;
+      background: var(--fondo-progreso); color: var(--color-progreso); }
+    .trabajando-datos { display: flex; flex-direction: column; gap: 2px; min-width: 220px; flex: 1; }
+    .pasos-vivos { display: flex; gap: 6px; list-style: none; margin: 0; padding: 0; flex-wrap: wrap; }
+    .pasos-vivos li { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; padding: 4px 10px; border-radius: 999px;
+      background: var(--mat-sys-surface-container-high); color: var(--mat-sys-on-surface-variant); }
+    .pasos-vivos li mat-icon { font-size: 16px; width: 16px; height: 16px; }
+    .pasos-vivos li.hecho { background: var(--fondo-exito); color: var(--color-exito); }
+    .pasos-vivos li.actual { background: var(--fondo-progreso); color: var(--color-progreso); font-weight: 600; }
+    .resumen-final { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 16px;
+      border-color: color-mix(in srgb, var(--color-exito) 50%, transparent); }
+    .resumen-final.con-fallas { border-color: color-mix(in srgb, var(--color-error) 50%, transparent); }
+    .icono-final { font-size: 44px; width: 44px; height: 44px; color: var(--color-exito); }
+    .con-fallas .icono-final { color: var(--color-error); }
+    .resumen-texto { flex: 1; min-width: 220px; }
+    .resumen-texto h2 { margin: 0 0 4px; }
+    .resumen-texto p { margin: 0; color: var(--mat-sys-on-surface-variant); }
+    .resumen-texto .ok { color: var(--color-exito); }
+    .resumen-texto .ko { color: var(--color-error); }
+    .resumen-acciones { display: flex; gap: 8px; flex-wrap: wrap; }
+    .reintento { margin-top: 8px; }
+    .aviso-real { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .aviso-real span { flex: 1 1 320px; }
     .progreso { display: flex; align-items: center; gap: 12px; margin: 0 0 16px; font-size: 13px; color: var(--mat-sys-on-surface-variant); }
     .progreso mat-progress-bar { flex: 1; }
     .controles { margin-bottom: 12px; overflow-x: auto; }
@@ -154,6 +281,12 @@ export class EjecucionLoteComponent implements OnInit {
   protected readonly individual = INDIVIDUAL;
 
   protected readonly lote = signal<Lote | null>(null);
+  /** La ejecución que se está reintentando, para mostrar el avance en su fila. */
+  protected readonly reintentando = signal<number | null>(null);
+  private readonly ejecucionesService = inject(EjecucionesService);
+  private readonly avisos = inject(MatSnackBar);
+  protected readonly repitiendo = signal(false);
+  protected readonly errorRepetir = signal<string | null>(null);
   protected readonly ejecuciones = signal<EjecucionOnu[]>([]);
   protected readonly error = signal<string | null>(null);
   protected readonly deteniendo = signal(false);
@@ -186,6 +319,44 @@ export class EjecucionLoteComponent implements OnInit {
       { etiqueta: 'No iniciadas', icono: 'do_not_disturb_on', tono: 'neutro', valor: c.noIniciadas },
     ];
   });
+  /** Los pasos que hace el ejecutor, para seguir la ONU en curso. */
+  protected readonly pasosVivos = [
+    { codigo: 'P02', nombre: 'Sesión', icono: 'login' },
+    { codigo: 'P03', nombre: 'Foto previa', icono: 'photo_camera' },
+    { codigo: 'P04', nombre: 'Tarjeta', icono: 'settings_input_component' },
+    { codigo: 'P06', nombre: 'Cambio', icono: 'swap_horiz' },
+    { codigo: 'P07', nombre: 'Guardar', icono: 'save' },
+  ];
+  protected readonly enCurso = computed(() => this.ejecuciones().find((e) => e.estado === 'EN_CURSO' || e.estado === 'REVALIDANDO') ?? null);
+  /** Las fallidas que todavía hay que resolver: las resueltas después en otro lote no se reintentan. */
+  protected readonly fallidas = computed(() => this.ejecuciones().filter((e) => e.estado === 'FALLIDA' && !e.resueltaEnLote));
+  protected readonly resueltasDespues = computed(() => this.ejecuciones().filter((e) => e.estado === 'FALLIDA' && !!e.resueltaEnLote).length);
+  protected readonly reintentandoTodas = signal(false);
+  /** Lo que tarda en promedio una ONU de este lote, con las que ya terminaron. */
+  protected readonly promedioMs = computed(() => {
+    const hechas = this.ejecuciones().map((e) => e.duracionMs).filter((d): d is number => d !== null && d > 0);
+    return hechas.length ? hechas.reduce((a, b) => a + b, 0) / hechas.length : null;
+  });
+  protected readonly restanteMs = computed(() => {
+    const c = this.lote()?.contadores;
+    const promedio = this.promedioMs();
+    if (!c || promedio === null || c.pendientes + c.enCurso === 0) return null;
+    return promedio * (c.pendientes + c.enCurso);
+  });
+
+  protected porcentaje(valor: number): number {
+    const total = this.lote()?.contadores.entran ?? 0;
+    return total ? (valor / total) * 100 : 0;
+  }
+
+  protected esFinal(estado: string): boolean {
+    return ['TERMINADO', 'TERMINADO_CON_FALLAS', 'DETENIDO'].includes(estado);
+  }
+
+  protected pasoHecho(e: EjecucionOnu, codigo: string): boolean {
+    return !!e.pasoActual && e.pasoActual > codigo;
+  }
+
   protected readonly filas = computed(() => {
     const grupos: Record<FiltroFilas, EstadoEjecucion[] | null> = {
       TODAS: null,
@@ -204,7 +375,13 @@ export class EjecucionLoteComponent implements OnInit {
     this.tiempoReal.escuchar(`lote:${id}`).pipe(
       startWith(null),
       auditTime(250),
-      switchMap(() => forkJoin([this.lotesService.consultar(id), this.lotesService.listarEjecuciones(id)])),
+      switchMap(() => forkJoin([this.lotesService.consultar(id), this.lotesService.listarEjecuciones(id)]).pipe(
+        // Un error no corta la escucha: el siguiente aviso (o sondeo) vuelve a intentar.
+        catchError((error: unknown) => {
+          this.error.set(mensajeDeError(error));
+          return EMPTY;
+        }),
+      )),
       takeUntilDestroyed(this.destroyRef),
     ).subscribe({
       next: ([lote, ejecuciones]) => {
@@ -246,6 +423,107 @@ export class EjecucionLoteComponent implements OnInit {
         this.error.set(mensajeDeError(error));
         this.deteniendo.set(false);
       },
+    });
+  }
+
+  /** Arma la vista previa real y lleva a ella: ahí se confirma con Ejecutar (dos pasos, como cualquier lote). */
+  protected repetirDeVerdad(loteId: number): void {
+    this.repitiendo.set(true);
+    this.errorRepetir.set(null);
+    this.lotesService.repetirDeVerdad(loteId).subscribe({
+      next: (vista) => void this.router.navigate(['/lotes', vista.lote.id, 'vista-previa']),
+      error: (error: unknown) => {
+        this.repitiendo.set(false);
+        this.errorRepetir.set(mensajeDeError(error));
+      },
+    });
+  }
+
+  /**
+   * Reintenta una ONU fallida: la marca como revisada (si no lo estaba), la vuelve a revisar desde cero en SmartOLT, la
+   * OLT y Wispro, y si entra la ejecuta en un lote individual del mismo tipo (real o simulación). Si ya no hace falta
+   * (por ejemplo, el cambio sí había quedado aplicado), lo dice y no ejecuta nada.
+   */
+  protected reintentar(e: EjecucionOnu): void {
+    const simulacion = this.lote()?.simulacion ?? true;
+    const datos: DatosConfirmacion = {
+      titulo: 'Reintentar esta ONU', icono: 'replay', textoConfirmar: simulacion ? 'Sí, simular de nuevo' : 'Sí, reintentar',
+      mensaje: `Vas a reintentar ${e.sn} (${e.olt} ${e.tarjeta}/${e.pon} ONT ${e.onuId})${simulacion ? ' como simulación' : ', con cambio real en la OLT'}.`,
+      detalle: 'Se marca la falla como revisada, se vuelve a leer la ONU en SmartOLT, la OLT y Wispro, y si todavía hace falta se ejecuta en un lote individual. Si ya tiene GUAJIRANET1, no se toca.',
+    };
+    this.dialogo.open(ConfirmarDialogoComponent, { width: '520px', data: datos }).afterClosed().pipe(
+      filter(Boolean),
+      switchMap(() => {
+        this.reintentando.set(e.id);
+        const nota = `Reintento pedido desde el lote ${e.loteNumero}: ${e.codigo ?? 'fallo'}.`;
+        return e.revisada ? of(null) : this.ejecucionesService.marcarRevisada(e.id, { nota });
+      }),
+      switchMap(() => this.lotesService.armarPruebaIndividual({ sn: e.sn })),
+      switchMap((vista) => {
+        const item = vista.items[0];
+        if (!item || item.grupo !== 'ENTRA') {
+          const motivo = item?.grupo === 'YA_TIENE_PERFIL' ? 'ya tiene GUAJIRANET1: no hace falta reintentar.'
+            : item?.mensaje ?? 'no se encontró en SmartOLT.';
+          this.avisos.open(`${e.sn}: ${motivo}`, 'Cerrar', { duration: 10_000 });
+          return this.lotesService.descartar(vista.lote.id).pipe(map(() => null));
+        }
+        return this.lotesService.confirmar(vista.lote.id, { simulacion }).pipe(map((lote) => lote.id));
+      }),
+      finalize(() => this.reintentando.set(null)),
+    ).subscribe({
+      next: (nuevoLote) => {
+        if (nuevoLote !== null) {
+          void this.router.navigate(['/lotes', nuevoLote]);
+        }
+      },
+      error: (error: unknown) => this.avisos.open(`No se pudo reintentar ${e.sn}: ${mensajeDeError(error)}`, 'Cerrar', { duration: 10_000 }),
+    });
+  }
+
+  /**
+   * Reintenta todas las fallidas del lote a la vez: las marca como revisadas, arma una vista previa con esas ONUs (se
+   * vuelven a leer SmartOLT, la OLT y Wispro) y ejecuta las que entren, del mismo tipo que este lote.
+   */
+  protected reintentarFallidas(): void {
+    const lote = this.lote();
+    const fallidas = this.fallidas();
+    if (!lote || !fallidas.length) return;
+    const olts = [...new Set(fallidas.map((f) => f.olt))];
+    const datos: DatosConfirmacion = {
+      titulo: `Reintentar ${fallidas.length} fallidas`, icono: 'replay',
+      textoConfirmar: lote.simulacion ? 'Sí, simular de nuevo' : 'Sí, reintentar',
+      mensaje: `Vas a reintentar ${fallidas.length} ONU(s) de ${lote.numero}${lote.simulacion ? ' como simulación' : ', con cambio real en la OLT'}.`,
+      detalle: 'Se marcan las fallas como revisadas, se vuelven a leer las ONUs y se ejecutan solo las que todavía lo necesiten. Las que ya tengan GUAJIRANET1 no se tocan.',
+    };
+    this.dialogo.open(ConfirmarDialogoComponent, { width: '520px', data: datos }).afterClosed().pipe(
+      filter(Boolean),
+      switchMap(() => {
+        this.reintentandoTodas.set(true);
+        const nota = `Reintento de todas las fallidas del lote ${lote.numero}.`;
+        const revisar = fallidas.filter((f) => !f.revisada).map((f) => this.ejecucionesService.marcarRevisada(f.id, { nota }));
+        return revisar.length ? forkJoin(revisar) : of([]);
+      }),
+      switchMap(() => this.lotesService.armarVistaPrevia({
+        marca: 'HUAWEI', olt: olts.length === 1 ? olts[0] : null, tarjeta: null, pon: null,
+        perfiles: ['GUAJIRANET', 'SIN_PERFIL'], sns: fallidas.map((f) => f.sn),
+      })),
+      switchMap((vista) => {
+        const entran = vista.items.filter((i) => i.grupo === 'ENTRA').length;
+        if (!entran) {
+          this.avisos.open('Ninguna necesita reintento: ya tienen GUAJIRANET1 o no cumplen las condiciones. Revisa la vista previa.', 'Cerrar', { duration: 10_000 });
+          void this.router.navigate(['/lotes', vista.lote.id, 'vista-previa']);
+          return of(null);
+        }
+        return this.lotesService.confirmar(vista.lote.id, { simulacion: lote.simulacion }).pipe(map((nuevo) => nuevo.id));
+      }),
+      finalize(() => this.reintentandoTodas.set(false)),
+    ).subscribe({
+      next: (nuevoLote) => {
+        if (nuevoLote !== null) {
+          void this.router.navigate(['/lotes', nuevoLote]);
+        }
+      },
+      error: (error: unknown) => this.avisos.open(`No se pudieron reintentar: ${mensajeDeError(error)}`, 'Cerrar', { duration: 10_000 }),
     });
   }
 }

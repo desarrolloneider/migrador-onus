@@ -4,7 +4,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { Router, RouterLink } from '@angular/router';
-import { auditTime, startWith, switchMap } from 'rxjs';
+import { EMPTY, auditTime, catchError, startWith, switchMap } from 'rxjs';
 import { mensajeDeError } from '../../core/api/errores';
 import { TiempoRealService } from '../../core/realtime/tiempo-real.service';
 import { SistemaService } from '../../core/sistema/sistema.service';
@@ -135,11 +135,19 @@ export class InicioComponent {
 
   constructor() {
     inject(TiempoRealService).escuchar('sistema')
-      .pipe(startWith(null), auditTime(400), switchMap(() => this.lotesService.listarRecientes(15)), takeUntilDestroyed(inject(DestroyRef)))
+      .pipe(startWith(null), auditTime(400), switchMap(() => this.lotesService.listarRecientes(12).pipe(
+        // Un error (por ejemplo, el servidor reiniciándose) se muestra, pero no corta la escucha: el siguiente aviso reintenta.
+        catchError((error: unknown) => {
+          this.error.set(mensajeDeError(error));
+          this.cargando.set(false);
+          return EMPTY;
+        }),
+      )), takeUntilDestroyed(inject(DestroyRef)))
       .subscribe({
         next: (lotes) => {
           this.lotes.set(lotes);
           this.cargando.set(false);
+          this.error.set(null);
         },
         error: (error: unknown) => {
           this.error.set(mensajeDeError(error));

@@ -13,6 +13,7 @@ import org.springframework.security.web.context.HttpSessionSecurityContextReposi
 import org.springframework.security.web.context.SecurityContextRepository;
 import org.springframework.security.web.csrf.CsrfFilter;
 
+import com.guajiranet.migradoronu.acceso.puertos.entrada.OwnCredentialsPort;
 import com.guajiranet.migradoronu.acceso.puertos.entrada.QueryUsersPort;
 
 /**
@@ -31,7 +32,8 @@ public class SeguridadConfig {
     }
 
     @Bean
-    SecurityFilterChain cadenaDeSeguridad(HttpSecurity http, SecurityContextRepository contextos, QueryUsersPort usuarios) throws Exception {
+    SecurityFilterChain cadenaDeSeguridad(HttpSecurity http, SecurityContextRepository contextos, QueryUsersPort usuarios,
+                                       OwnCredentialsPort credenciales) throws Exception {
         http
                 .authorizeHttpRequests(reglas -> reglas
                         .requestMatchers(HttpMethod.POST, "/api/v1/auth/login").permitAll()
@@ -41,7 +43,7 @@ public class SeguridadConfig {
                 .securityContext(contexto -> contexto.securityContextRepository(contextos))
                 .csrf(csrf -> csrf.spa())
                 .addFilterAfter(new CsrfCookieFilter(), CsrfFilter.class)
-                .addFilterBefore(new UsuarioActivoFilter(usuarios), AuthorizationFilter.class)
+                .addFilterBefore(new UsuarioActivoFilter(usuarios, credenciales), AuthorizationFilter.class)
                 .exceptionHandling(errores -> errores
                         .authenticationEntryPoint(RespuestasDeSeguridad::sinSesion)
                         .accessDeniedHandler(RespuestasDeSeguridad::denegado))

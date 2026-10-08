@@ -10,4 +10,10 @@ public interface BuildBatchPort {
     BatchView buildPreview(BuildBatchCommand command);
 
     BatchView buildSingleOnuPreview(BuildSingleOnuPreviewCommand command);
+
+    /**
+     * Arma una vista previa nueva con los mismos filtros (o la misma ONU) de un lote de simulación ya terminado, para
+     * ejecutarlo de verdad. No reutiliza la clasificación vieja: SmartOLT, la OLT y Wispro se vuelven a leer.
+     */
+    BatchView rebuildFromSimulation(long loteId, long usuarioId);
 }

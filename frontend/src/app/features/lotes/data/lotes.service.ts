@@ -8,6 +8,7 @@ import {
   ArmarPruebaIndividualRequest,
   ConfirmarLoteRequest,
   Lote,
+  OnusDeOlt,
   VistaPrevia,
 } from '../models/lote.model';
 
@@ -45,12 +46,22 @@ export class LotesService {
     return this.http.post<Lote>(`${this.baseUrl}/${id}/confirm`, request);
   }
 
+  /** Desde una simulación terminada: arma una vista previa nueva con los mismos filtros para ejecutarla de verdad. */
+  repetirDeVerdad(id: number): Observable<VistaPrevia> {
+    return this.http.post<VistaPrevia>(`${this.baseUrl}/${id}/repeat-real`, {});
+  }
+
   descartar(id: number): Observable<Lote> {
     return this.http.post<Lote>(`${this.baseUrl}/${id}/discard`, {});
   }
 
   detener(id: number): Observable<Lote> {
     return this.http.post<Lote>(`${this.baseUrl}/${id}/stop`, {});
+  }
+
+  /** Las ONUs de una OLT con su estado y su perfil TR-069 leído en la propia OLT. Solo lectura. */
+  onusDeOlt(codigo: string): Observable<OnusDeOlt> {
+    return this.http.get<OnusDeOlt>(`${environment.apiUrl}/olts/${encodeURIComponent(codigo)}/onus`);
   }
 
   listarEjecuciones(id: number): Observable<EjecucionOnu[]> {

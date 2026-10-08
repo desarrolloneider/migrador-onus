@@ -64,7 +64,7 @@ public class LotesController {
     public record VistaPreviaDto(LoteDto lote, List<ItemDto> items, boolean soloSimulacion, String motivoSoloSimulacion) {
     }
 
-    public record ArmarLoteRequest(String marca, String olt, String tarjeta, Integer pon) {
+    public record ArmarLoteRequest(String marca, String olt, String tarjeta, Integer pon, List<String> perfiles, List<String> sns) {
     }
 
     public record ArmarPruebaIndividualRequest(String sn) {
@@ -100,7 +100,8 @@ public class LotesController {
 
     @PostMapping("/preview")
     public VistaPreviaDto armar(@RequestBody ArmarLoteRequest cuerpo, @AuthenticationPrincipal UsuarioAutenticado usuario) {
-        BatchFilters filtros = new BatchFilters(texto(cuerpo.marca()), texto(cuerpo.olt()), texto(cuerpo.tarjeta()), cuerpo.pon());
+        BatchFilters filtros = new BatchFilters(texto(cuerpo.marca()), texto(cuerpo.olt()), texto(cuerpo.tarjeta()), cuerpo.pon(),
+                cuerpo.perfiles(), cuerpo.sns());
         BatchView lote = armar.buildPreview(new BuildBatchCommand(usuario.id(), filtros));
         return vistaPrevia(lote.id());
     }
@@ -150,6 +151,13 @@ public class LotesController {
         return consultar(id);
     }
 
+    /** Desde una simulación terminada: arma una vista previa nueva con los mismos filtros, para ejecutar de verdad. */
+    @PostMapping("/{id}/repeat-real")
+    public VistaPreviaDto repetirDeVerdad(@PathVariable long id, @AuthenticationPrincipal UsuarioAutenticado usuario) {
+        BatchView nuevo = armar.rebuildFromSimulation(id, usuario.id());
+        return vistaPrevia(nuevo.id());
+    }
+
     @PostMapping("/{id}/discard")
     public LoteDto descartar(@PathVariable long id, @RequestHeader(value = "Idempotency-Key", required = false) String clave,
                              @AuthenticationPrincipal UsuarioAutenticado usuario) {
@@ -162,13 +170,6 @@ public class LotesController {
                            @AuthenticationPrincipal UsuarioAutenticado usuario) {
         controlar.stop(new StopBatchCommand(id, usuario.id(), exigirClave(clave)));
         return consultar(id);
-    }
-
-    /** Las ejecuciones por ONU llegan con el proceso ejecutor; mientras tanto la lista está vacía. */
-    @GetMapping("/{id}/runs")
-    public List<Object> ejecuciones(@PathVariable long id) {
-        lote(id);
-        return List.of();
     }
 
     private LoteDetalle lote(long id) {

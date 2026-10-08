@@ -50,3 +50,17 @@ INSERT INTO parametros (clave, valor, descripcion) VALUES
     ('tiempo_estimado_por_onu_minutos',      '2',                 'Tiempo estimado máximo por ONU para la vista previa (propuesta)'),
     ('ventana_horaria',                      NULL,                'Ventana horaria para ejecutar. Sin valor: sin restricción (PC-25)');
 --rollback DELETE FROM parametros;
+
+--changeset migrador:configuracion-003-olts-smartolt
+--comment: Las 8 OLT de SmartOLT (diagnóstico del 6 de octubre). El código es el nombre en SmartOLT. Sin tarjetas permitidas: se escogen en Configuración. Solo OLT-CONEJO tiene acceso por consola, para la prueba con un cliente.
+INSERT INTO olts (codigo, nombre, direccion, puerto, protocolo) VALUES
+    ('OLT_ALBANIA',        'Albania (MA5608T)',         NULL,           NULL, NULL),
+    ('OLT_SAN_JUAN',       'San Juan (MA5683T)',        NULL,           NULL, NULL),
+    ('OLT_NEIVA',          'Neiva (MA5608T)',           NULL,           NULL, NULL),
+    ('OLT_VILLAREINA',     'Villareina (MA5608T)',      NULL,           NULL, NULL),
+    ('OLT_FONSECA',        'Fonseca (MA5800-X17)',      NULL,           NULL, NULL),
+    ('OLT_SAN_JUAN_2',     'San Juan 2 (MA5608T)',      NULL,           NULL, NULL),
+    ('OLT_ZTE-ZXA10-C650', 'ZTE C650 (sin procedimiento)', NULL,        NULL, NULL),
+    ('OLT-CONEJO',         'Conejo (MA5608T)',          '10.11.104.50', 22,   'SSH')
+ON CONFLICT (codigo) DO NOTHING;
+--rollback DELETE FROM olts WHERE codigo IN ('OLT_ALBANIA','OLT_SAN_JUAN','OLT_NEIVA','OLT_VILLAREINA','OLT_FONSECA','OLT_SAN_JUAN_2','OLT_ZTE-ZXA10-C650','OLT-CONEJO');

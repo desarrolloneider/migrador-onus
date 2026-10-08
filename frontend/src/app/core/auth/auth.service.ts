@@ -3,7 +3,7 @@ import { Injectable, computed, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { Observable, catchError, map, of, tap } from 'rxjs';
 import { environment } from '../../../environments/environment';
-import { LoginRequest, UsuarioSesion } from './models';
+import { CambiarCredencialesRequest, LoginRequest, UsuarioSesion } from './models';
 
 /**
  * Sesión de usuario (spec 0.1): sirve para saber quién hace cada acción. La sesión vive en el servidor con una
@@ -32,6 +32,18 @@ export class AuthService {
     return this.http.post<UsuarioSesion>(`${this.baseUrl}/login`, request).pipe(
       tap((usuario) => this.usuarioActual.set(usuario)),
     );
+  }
+
+  /** Cambia la contraseña propia y, si se pide, el usuario. La sesión sigue abierta. */
+  cambiarCredenciales(request: CambiarCredencialesRequest): Observable<UsuarioSesion> {
+    return this.http.post<UsuarioSesion>(`${this.baseUrl}/cambiar-credenciales`, request).pipe(
+      tap((usuario) => this.usuarioActual.set(usuario)),
+    );
+  }
+
+  /** A dónde ir después de entrar: al cambio de contraseña si todavía tiene la inicial. */
+  destinoInicial(): string {
+    return this.usuarioActual()?.debeCambiarClave ? '/cambiar-clave' : '/inicio';
   }
 
   cerrarSesion(): Observable<void> {

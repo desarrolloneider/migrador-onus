@@ -1,25 +1,50 @@
 package com.guajiranet.migradoronu.worker;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.ComponentScan;
+import org.springframework.context.annotation.FilterType;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
+import com.guajiranet.migradoronu.ejecucion.aplicacion.CambioDePerfilUnaOnu;
+import com.guajiranet.migradoronu.ejecucion.aplicacion.EjecutorDeOnus;
+import com.guajiranet.migradoronu.ejecucion.puertos.salida.ColaDeEjecucionPort;
+import com.guajiranet.migradoronu.ejecucion.puertos.salida.OltConsoleFactoryPort;
+
 /**
- * Proceso ejecutor (arquitectura 9.1). Solo arma las piezas; no tiene lógica. Una pantalla colgada nunca detiene un
- * lote y reiniciar la web no interrumpe ejecuciones.
- *
- * <p>Igual que en la web, cada módulo se agrega al escaneo cuando tenga sus casos de uso (docs/adr/0002).
+ * Proceso ejecutor: toma las ONUs confirmadas y les cambia el perfil por consola (arquitectura 9.1). Sin pantallas.
+ * Arma los mismos módulos que la web, sin sus controladores ni su seguridad HTTP.
  */
+@SpringBootApplication
 @EnableScheduling
-@SpringBootApplication(scanBasePackages = {
+@ComponentScan(basePackages = {
         "com.guajiranet.migradoronu.worker",
         "com.guajiranet.migradoronu.comun",
         "com.guajiranet.migradoronu.auditoria",
-        "com.guajiranet.migradoronu.ensamblaje.transversal"
-})
+        "com.guajiranet.migradoronu.acceso",
+        "com.guajiranet.migradoronu.configuracion",
+        "com.guajiranet.migradoronu.lotes",
+        "com.guajiranet.migradoronu.conciliacion",
+        "com.guajiranet.migradoronu.ejecucion",
+        "com.guajiranet.migradoronu.ensamblaje.transversal",
+        "com.guajiranet.migradoronu.ensamblaje.acceso",
+        "com.guajiranet.migradoronu.ensamblaje.configuracion",
+        "com.guajiranet.migradoronu.ensamblaje.conciliacion",
+        "com.guajiranet.migradoronu.ensamblaje.lotes",
+        "com.guajiranet.migradoronu.ensamblaje.consola"
+}, excludeFilters = @ComponentScan.Filter(type = FilterType.REGEX,
+        pattern = ".*\\.infraestructura\\.entrada\\.(web|seguridad)\\..*"))
 public class MigradorWorkerApplication {
 
     public static void main(String[] args) {
         SpringApplication.run(MigradorWorkerApplication.class, args);
+    }
+
+    @Bean
+    EjecutorDeOnus ejecutorDeOnus(ColaDeEjecucionPort cola, OltConsoleFactoryPort consolas, CambioDePerfilUnaOnu cambio,
+                                  @Value("${migrador.perfil-origen:GUAJIRANET}") String perfilOrigen) {
+        return new EjecutorDeOnus(cola, consolas, cambio, perfilOrigen);
     }
 }

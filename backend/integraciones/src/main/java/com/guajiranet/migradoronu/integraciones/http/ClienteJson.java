@@ -7,6 +7,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.function.Consumer;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
@@ -24,7 +26,9 @@ import tools.jackson.databind.json.JsonMapper;
  */
 public final class ClienteJson {
 
+    private static final Logger LOG = LoggerFactory.getLogger(ClienteJson.class);
     private static final int MAXIMO_ESPERAS_429 = 3;
+    private static final int MAXIMO_INTENTOS = 3;
     private static final Duration ESPERA_MAXIMA_429 = Duration.ofSeconds(120);
 
     private final String sistema;
@@ -50,26 +54,50 @@ public final class ClienteJson {
     }
 
     public JsonNode get(String ruta, Map<String, ?> parametros) {
-        for (int intento = 0; ; intento++) {
+        int esperas429 = 0;
+        for (int intento = 1; ; intento++) {
             try {
                 String cuerpo = rest.get().uri(b -> construir(b, ruta, parametros)).retrieve().body(String.class);
                 return json.readTree(cuerpo == null ? "null" : cuerpo);
             } catch (HttpStatusCodeException e) {
                 HttpStatusCode estado = e.getStatusCode();
-                if (estado.value() == 429 && intento < MAXIMO_ESPERAS_429) {
+                if (estado.value() == 429 && esperas429++ < MAXIMO_ESPERAS_429) {
                     esperar(retryAfter(e.getResponseHeaders()));
+                    intento--;
+                    continue;
+                }
+                if (estado.is5xxServerError() && intento < MAXIMO_INTENTOS) {
+                    LOG.warn("{} respondió {} en {} (intento {} de {}); se reintenta", sistema, estado.value(), ruta, intento, MAXIMO_INTENTOS);
+                    esperar(Duration.ofSeconds(2L * intento));
                     continue;
                 }
                 throw new ErrorDeIntegracion(sistema, mensaje(estado.value()), e);
-            } catch (ResourceAccessException e) {
-                throw new ErrorDeIntegracion(sistema, sistema + " no responde.", e);
             } catch (RuntimeException e) {
                 if (e instanceof ErrorDeIntegracion) {
                     throw e;
                 }
-                throw new ErrorDeIntegracion(sistema, sistema + " devolvió una respuesta que no se pudo leer.", e);
+                // Cortes de conexión, tiempo agotado o una respuesta que llegó incompleta: se reintenta.
+                String causa = causaRaiz(e);
+                if (intento < MAXIMO_INTENTOS) {
+                    LOG.warn("{} falló en {} (intento {} de {}): {}; se reintenta", sistema, ruta, intento, MAXIMO_INTENTOS, causa);
+                    esperar(Duration.ofSeconds(2L * intento));
+                    continue;
+                }
+                LOG.warn("{} falló en {} tras {} intentos: {}", sistema, ruta, MAXIMO_INTENTOS, causa, e);
+                throw new ErrorDeIntegracion(sistema, e instanceof ResourceAccessException
+                        ? sistema + " no responde (" + causa + "). Intenta de nuevo en unos minutos."
+                        : sistema + " devolvió una respuesta que no se pudo leer (" + causa + "). Intenta de nuevo.", e);
             }
         }
+    }
+
+    private static String causaRaiz(Throwable e) {
+        Throwable t = e;
+        while (t.getCause() != null && t.getCause() != t) {
+            t = t.getCause();
+        }
+        String m = t.getMessage();
+        return t.getClass().getSimpleName() + (m == null || m.isBlank() ? "" : ": " + (m.length() > 120 ? m.substring(0, 120) + "…" : m));
     }
 
     private static URI construir(UriBuilder b, String ruta, Map<String, ?> parametros) {

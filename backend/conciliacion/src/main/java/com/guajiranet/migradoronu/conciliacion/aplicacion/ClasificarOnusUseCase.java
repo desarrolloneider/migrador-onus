@@ -21,6 +21,7 @@ import com.guajiranet.migradoronu.conciliacion.dominio.OnuPosition;
 import com.guajiranet.migradoronu.conciliacion.dominio.Subscriber;
 import com.guajiranet.migradoronu.conciliacion.dominio.UnreviewedFailure;
 import com.guajiranet.migradoronu.conciliacion.puertos.entrada.ClassifyOnusPort;
+import com.guajiranet.migradoronu.conciliacion.puertos.salida.OltProfilesQueryPort;
 import com.guajiranet.migradoronu.conciliacion.puertos.salida.OltSettingsQueryPort;
 import com.guajiranet.migradoronu.conciliacion.puertos.salida.OnuInventoryPort;
 import com.guajiranet.migradoronu.conciliacion.puertos.salida.OnuParticipationQueryPort;
@@ -38,10 +39,25 @@ public class ClasificarOnusUseCase implements ClassifyOnusPort {
     private final OnuParticipationQueryPort participacion;
     private final Supplier<String> perfilDestino;
     private final Set<String> marcasConProcedimiento;
+    private final OltProfilesQueryPort perfilesOlt;
+    private final Supplier<String> perfilOrigen;
 
     public ClasificarOnusUseCase(OnuInventoryPort smartOlt, SubscriberDirectoryPort wispro, OltSettingsQueryPort olts,
                                  OnuParticipationQueryPort participacion, Supplier<String> perfilDestino,
                                  Set<String> marcasConProcedimiento) {
+        this(smartOlt, wispro, olts, participacion, perfilDestino, marcasConProcedimiento, null, () -> null);
+    }
+
+    /**
+     * @param perfilesOlt  el perfil de cada ONU según la OLT; SmartOLT no lo trae
+     * @param perfilOrigen el único perfil que se cambia (GUAJIRANET); las demás quedan fuera con EXC_OTRO_PERFIL
+     */
+    public ClasificarOnusUseCase(OnuInventoryPort smartOlt, SubscriberDirectoryPort wispro, OltSettingsQueryPort olts,
+                                 OnuParticipationQueryPort participacion, Supplier<String> perfilDestino,
+                                 Set<String> marcasConProcedimiento, OltProfilesQueryPort perfilesOlt, Supplier<String> perfilOrigen) {
+        // Null: no se consulta la OLT y el perfil es el que traiga SmartOLT.
+        this.perfilesOlt = perfilesOlt;
+        this.perfilOrigen = Objects.requireNonNull(perfilOrigen, "perfilOrigen");
         this.smartOlt = Objects.requireNonNull(smartOlt, "smartOlt");
         this.wispro = Objects.requireNonNull(wispro, "wispro");
         this.olts = Objects.requireNonNull(olts, "olts");
@@ -53,7 +69,42 @@ public class ClasificarOnusUseCase implements ClassifyOnusPort {
     @Override
     public List<Classification> classify(ClassifyOnusCommand command) {
         List<OnuCandidate> onus = smartOlt.listOnus(command.marca(), command.oltCodigo(), command.tarjeta(), command.pon());
-        return clasificar(onus, porIp(wispro.listAll()));
+        if (command.sns() != null) {
+            // Solo las escogidas en la pantalla, comparadas en el formato común del SN.
+            Set<String> escogidas = command.sns().stream().map(sn -> FormatoSn.normalizar(sn).orElse(sn.strip().toUpperCase(Locale.ROOT)))
+                    .collect(Collectors.toSet());
+            onus = onus.stream().filter(o -> escogidas.contains(FormatoSn.normalizar(o.rawSn()).orElse(o.rawSn().toUpperCase(Locale.ROOT))))
+                    .toList();
+        }
+        origenes.set(command.perfilesOrigen());
+        try {
+            return clasificar(onus, porIp(wispro.listAll()));
+        } finally {
+            origenes.remove();
+        }
+    }
+
+    /** Los perfiles de origen de la clasificación en curso; null: el configurado. */
+    private final ThreadLocal<List<String>> origenes = new ThreadLocal<>();
+
+    /** ¿Se cambia una ONU con este perfil (null = sin perfil)? */
+    private boolean esOrigen(String perfil) {
+        List<String> escogidos = origenes.get();
+        if (escogidos == null) {
+            // Por defecto se cambian las del perfil origen (GUAJIRANET) y también las que no tienen perfil.
+            String origen = perfilOrigen.get();
+            return origen == null || perfil == null || origen.equalsIgnoreCase(perfil);
+        }
+        return perfil == null ? escogidos.contains(ClassifyOnusCommand.SIN_PERFIL)
+                : escogidos.stream().anyMatch(p -> p.equalsIgnoreCase(perfil));
+    }
+
+    private String descripcionOrigen() {
+        List<String> escogidos = origenes.get();
+        if (escogidos == null) {
+            return perfilOrigen.get() + " o sin perfil";
+        }
+        return escogidos.stream().map(p -> p.equals(ClassifyOnusCommand.SIN_PERFIL) ? "sin perfil" : p).collect(Collectors.joining(" o "));
     }
 
     @Override
@@ -63,12 +114,24 @@ public class ClasificarOnusUseCase implements ClassifyOnusPort {
         if (registros.isEmpty()) {
             return Optional.empty();
         }
+        // En la prueba individual el SN se escribe a mano: se acepta el perfil origen y también una ONU sin perfil.
+        String origen = perfilOrigen.get();
+        origenes.set(origen == null ? null : List.of(origen, ClassifyOnusCommand.SIN_PERFIL));
+        try {
+            return clasificarUnaPorSn(registros, buscado, sn);
+        } finally {
+            origenes.remove();
+        }
+    }
+
+    private Optional<Classification> clasificarUnaPorSn(List<OnuCandidate> registros, String buscado, String sn) {
         return clasificar(registros, porIp(wispro.listAll())).stream()
                 .filter(c -> c.sn().equals(buscado) || c.onu().rawSn().equalsIgnoreCase(sn.strip()))
                 .findFirst();
     }
 
     private List<Classification> clasificar(List<OnuCandidate> onus, Map<String, List<Subscriber>> contratosPorIp) {
+        perfilesLeidos.clear();
         Map<String, List<OnuCandidate>> porSn = new LinkedHashMap<>();
         List<Classification> resultado = new ArrayList<>();
         for (OnuCandidate onu : onus) {
@@ -110,11 +173,29 @@ public class ClasificarOnusUseCase implements ClassifyOnusPort {
                     "ONU %s es %s; esa marca todavía no tiene procedimiento.".formatted(sn, onu.marca() == null ? "de marca desconocida" : onu.marca()),
                     onu, null, duplicados);
         }
+        // El perfil real lo dice la OLT. Si la OLT tiene consola y no se pudo leer, no se adivina.
+        boolean conConsola = perfilesOlt != null && olts.consoleAccessConfigured(pos.oltCodigo());
+        Optional<Map<String, String>> perfilesDeLaOlt = conConsola ? perfilesDe(pos.oltCodigo()) : Optional.empty();
+        if (conConsola && perfilesDeLaOlt.isEmpty()) {
+            return Classification.excluded(sn, ExclusionReason.EXC_PERFIL_NO_LEIDO,
+                    "ONU %s no entra al lote: no se pudo leer en %s qué perfil TR-069 tiene.".formatted(sn, pos.oltCodigo()), onu, null, duplicados);
+        }
+        if (perfilesDeLaOlt.isPresent()) {
+            String perfilEnOlt = perfilesDeLaOlt.get().get(pos.tarjeta() + "/" + pos.pon() + ":" + pos.onuId());
+            onu = new OnuCandidate(onu.rawSn(), onu.marca(), onu.modelo(), pos, onu.enLinea(), onu.ip(), perfilEnOlt);
+        }
         List<Subscriber> contratos = onu.ip() == null ? List.of() : contratosPorIp.getOrDefault(onu.ip(), List.of());
         Subscriber contrato = contratos.size() == 1 ? contratos.getFirst() : null;
         // Las que ya tienen el perfil nuevo no son exclusiones (spec 8.2).
         if (onu.perfilTr069() != null && onu.perfilTr069().equalsIgnoreCase(perfilDestino.get())) {
             return Classification.alreadyHasProfile(sn, onu, contrato, duplicados);
+        }
+        if (perfilesDeLaOlt.isPresent() && !esOrigen(onu.perfilTr069())) {
+            return Classification.excluded(sn, ExclusionReason.EXC_OTRO_PERFIL,
+                    "ONU %s tiene %s en %s; en este lote solo se cambian las que tienen %s.".formatted(sn,
+                            onu.perfilTr069() == null ? "ningún perfil TR-069" : "el perfil " + onu.perfilTr069(), pos.oltCodigo(),
+                            descripcionOrigen()),
+                    onu, contrato, duplicados);
         }
         // K4
         if (!onu.enLinea()) {
@@ -164,6 +245,13 @@ public class ClasificarOnusUseCase implements ClassifyOnusPort {
                     onu, contrato, duplicados);
         }
         return Classification.included(sn, onu, contrato, duplicados);
+    }
+
+    /** Una lectura por OLT en cada clasificación. */
+    private final Map<String, Optional<Map<String, String>>> perfilesLeidos = new java.util.concurrent.ConcurrentHashMap<>();
+
+    private Optional<Map<String, String>> perfilesDe(String olt) {
+        return perfilesLeidos.computeIfAbsent(olt, perfilesOlt::perfiles);
     }
 
     private static Map<String, List<Subscriber>> porIp(List<Subscriber> contratos) {

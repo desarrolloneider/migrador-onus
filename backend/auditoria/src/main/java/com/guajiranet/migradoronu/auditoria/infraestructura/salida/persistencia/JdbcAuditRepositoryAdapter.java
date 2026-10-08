@@ -128,7 +128,7 @@ public class JdbcAuditRepositoryAdapter implements AuditRepositoryPort {
         long total = jdbc.sql("SELECT count(*) FROM auditoria_eventos" + where).params(params).query(Long.class).single();
         params.put("limit", criteria.size());
         params.put("offset", (long) criteria.page() * criteria.size());
-        List<StoredAuditEvent> events = jdbc.sql(COLUMNS + where + " ORDER BY ocurrido_en, id LIMIT :limit OFFSET :offset")
+        List<StoredAuditEvent> events = jdbc.sql(COLUMNS + where + (criteria.recientesPrimero() ? " ORDER BY ocurrido_en DESC, id DESC" : " ORDER BY ocurrido_en, id") + " LIMIT :limit OFFSET :offset")
                 .params(params)
                 .query(this::toStored)
                 .list();

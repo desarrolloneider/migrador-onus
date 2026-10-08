@@ -6,6 +6,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.filter.OncePerRequestFilter;
 
+import com.guajiranet.migradoronu.acceso.puertos.entrada.OwnCredentialsPort;
 import com.guajiranet.migradoronu.acceso.puertos.entrada.QueryUsersPort;
 import com.guajiranet.migradoronu.comun.seguridad.UsuarioAutenticado;
 
@@ -22,9 +23,11 @@ import jakarta.servlet.http.HttpSession;
 final class UsuarioActivoFilter extends OncePerRequestFilter {
 
     private final QueryUsersPort usuarios;
+    private final OwnCredentialsPort credenciales;
 
-    UsuarioActivoFilter(QueryUsersPort usuarios) {
+    UsuarioActivoFilter(QueryUsersPort usuarios, OwnCredentialsPort credenciales) {
         this.usuarios = usuarios;
+        this.credenciales = credenciales;
     }
 
     @Override
@@ -38,6 +41,13 @@ final class UsuarioActivoFilter extends OncePerRequestFilter {
             }
             SecurityContextHolder.clearContext();
             RespuestasDeSeguridad.escribir(response, 401, "Sin sesión", "Tu usuario fue desactivado. Habla con el administrador de la herramienta.");
+            return;
+        }
+        // Con la contraseña inicial solo se puede cambiar la contraseña o cerrar sesión.
+        if (autenticacion != null && autenticacion.getPrincipal() instanceof UsuarioAutenticado usuario
+                && !request.getRequestURI().startsWith("/api/v1/auth/") && request.getRequestURI().startsWith("/api/")
+                && credenciales.debeCambiarClave(usuario.id())) {
+            RespuestasDeSeguridad.escribir(response, 403, "Cambia tu contraseña", "Antes de continuar debes cambiar la contraseña inicial.");
             return;
         }
         cadena.doFilter(request, response);

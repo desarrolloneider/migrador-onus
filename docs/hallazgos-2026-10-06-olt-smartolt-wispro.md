@@ -92,3 +92,21 @@ En la cuarta captura, antes del `bound-info`, aparece un `% Parameter error, the
 - **PC-09 (el perfil TR-069):** `tr069_profile` es el perfil que administra **SmartOLT**. En VILLAREINA vino vacío en las 516 ONUs, aunque la OLT tiene 108 en el perfil 2 y 39 en el perfil 3. **No sirve para saber quién está en el perfil 2:** la fuente es `bound-info` en la OLT.
 - **Wispro:** 10 979 contratos y 15 153 clientes. Los contratos traen `ip`, `public_id`, `client_id`, `state`, `ont_serial_number` (vacío en la muestra) y `ont_custom_tr069_profile`.
 - **Primera vista previa real (OLT_VILLAREINA):** 516 ONUs. 445 en línea con IP que coincide con un solo contrato de Wispro; 65 fuera de línea; 6 con una IP que no está en Wispro. Las 445 quedaron fuera solo por `EXC_OLT_SIN_ACCESO_CONFIGURADO`, porque todavía no hay OLT registradas. Tardó unos 2 minutos, casi todo en la descarga completa de Wispro (la segunda vista previa en 5 minutos usa la copia guardada).
+
+## 7. Consola de OLT-CONEJO por SSH (7 de octubre)
+
+- Acceso por SSH al puerto 22 desde el contenedor. La huella de la llave quedó fijada en `.env` (`CONSOLA_OLT_CONEJO_HUELLA`): si la OLT presenta otra, no se conecta.
+- `display ont tr069-server-config all` **no existe**. El comando correcto es `display ont tr069-server-profile all`, que muestra el ID, el nombre y cuántas ONUs tiene cada perfil. En CONEJO: 2 GUAJIRANET (7) y 3 GUAJIRANET1 (9).
+- `bound-info profile-id 2` en CONEJO: 0/0/4 (16), 0/0/5 (4), 0/0/6 (2, 25), 0/0/7 (18), 0/1/1 (17, 25). Total: 7.
+- **PC-34 resuelto:** `display ont info <F> <S> <P> <ONT>` termina con `TR069 server profile ID : 2` y `TR069 server profile name : GUAJIRANET`. Es la lectura por ONU para la foto previa y la verificación. También trae `Run state`, el `SN` y `TR069 management : Enable`.
+- La línea `Description` de `display ont info` lleva el nombre del cliente y puede ocupar varias líneas. No se muestra ni se guarda en la auditoría.
+- **Falta (PC-33):** confirmar con la ONU de prueba el comando de cambio dentro de `interface gpon 0/<tarjeta>`, por ejemplo `ont tr069-server-config <puerto> <ont> profile-id 3`.
+
+## 8. Primer cambio real (7 de octubre, OLT-CONEJO 0/0/4 ONT 16)
+
+- **Regla confirmada por el equipo:** una ONU fuera de línea no se toca; una en línea se cambia. Por eso 0/0/6 ONT 2 quedó sin tocar.
+- **Comandos confirmados por el técnico y probados:** `config`, `interface gpon 0/0`, `ont tr069-server-config 4 16 profile-id 3`, `quit` y `save`. El comando reemplaza el perfil directamente, sin `undo` y sin preguntar (y/n). Con esto se resuelve PC-33.
+- **PC-36 decidido:** se guarda con `save` después del cambio.
+- **Verificado:** `display ont info` muestra `TR069 server profile ID : 3 / GUAJIRANET1`. En CONEJO, el perfil 2 bajó de 7 a 6 ONUs y el 3 subió de 9 a 10.
+- **PC-38:** la ONU siguió en línea. `Last up time` no cambió (2026-10-06 20:08:43), así que no se reinició y el cliente no perdió el servicio.
+- **Falta:** confirmar en GenieACS (acs.guajiranet.com) que el equipo con SN 4857544347ADC1B3 aparece y reporta.

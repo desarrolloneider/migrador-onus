@@ -93,6 +93,10 @@ export interface ArmarLoteRequest {
   olt: string | null;
   tarjeta: string | null;
   pon: number | null;
+  /** Perfiles que se cambian ("SIN_PERFIL" para las que no tienen). Sin valor: el configurado (GUAJIRANET). */
+  perfiles?: string[] | null;
+  /** ONUs escogidas una por una. Sin valor: todas las que cumplan los filtros. */
+  sns?: string[] | null;
 }
 
 export interface ArmarPruebaIndividualRequest {
@@ -101,4 +105,25 @@ export interface ArmarPruebaIndividualRequest {
 
 export interface ConfirmarLoteRequest {
   simulacion: boolean;
+}
+
+/** Una ONU de una OLT con su estado (SmartOLT) y su perfil TR-069 real (leído en la OLT). */
+export interface OnuDeOlt {
+  sn: string;
+  modelo: string | null;
+  tarjeta: string;
+  pon: number;
+  onuId: number;
+  enLinea: boolean;
+  ip: string | null;
+  /** Null si no tiene perfil o no se pudo leer la OLT. */
+  perfil: string | null;
+}
+
+export interface OnusDeOlt {
+  olt: string;
+  /** False si la OLT no tiene acceso por consola o no se pudo leer: los perfiles salen vacíos. */
+  perfilesLeidos: boolean;
+  onus: OnuDeOlt[];
+  porPerfil: Record<string, number>;
 }

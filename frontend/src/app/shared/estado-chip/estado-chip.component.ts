@@ -16,7 +16,10 @@ import { Presentacion } from '../estados';
   `,
 })
 export class EstadoChipComponent {
-  readonly presentacion = input.required<Presentacion>();
+  /** Un estado que la pantalla no conoce se muestra como "Desconocido" en vez de romper la página. */
+  readonly presentacion = input.required<Presentacion, Presentacion | null | undefined>({
+    transform: (p: Presentacion | null | undefined) => p ?? { etiqueta: 'Desconocido', icono: 'help', tono: 'neutro' },
+  });
   readonly texto = input<string | null>(null);
   readonly compacto = input(false, { transform: booleanAttribute });
 }

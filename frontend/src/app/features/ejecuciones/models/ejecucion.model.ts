@@ -36,6 +36,9 @@ export interface EjecucionOnu {
   duracionMs: number | null;
   revisada: boolean;
   cambiosAplicados: string[];
+  /** Si la ONU se cambió después con éxito en otro lote, esta falla queda resuelta: no se reintenta. */
+  resueltaEnLoteId?: number | null;
+  resueltaEnLote?: string | null;
 }
 
 export interface PasoEjecucion {

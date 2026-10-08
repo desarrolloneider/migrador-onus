@@ -6,7 +6,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { RouterLink } from '@angular/router';
-import { auditTime, filter, startWith, switchMap } from 'rxjs';
+import { EMPTY, auditTime, catchError, filter, startWith, switchMap } from 'rxjs';
 import { mensajeDeError } from '../../../../core/api/errores';
 import { TiempoRealService } from '../../../../core/realtime/tiempo-real.service';
 import { SistemaService } from '../../../../core/sistema/sistema.service';
@@ -86,7 +86,13 @@ export class FallidasComponent {
     inject(TiempoRealService).escuchar('sistema').pipe(
       startWith(null),
       auditTime(300),
-      switchMap(() => this.ejecucionesService.listarFallidasSinRevisar()),
+      switchMap(() => this.ejecucionesService.listarFallidasSinRevisar().pipe(
+        // Un error no corta la escucha: el siguiente aviso (o sondeo) vuelve a intentar.
+        catchError((error: unknown) => {
+          this.error.set(mensajeDeError(error));
+          return EMPTY;
+        }),
+      )),
       takeUntilDestroyed(inject(DestroyRef)),
     ).subscribe({
       next: (fallidas) => {

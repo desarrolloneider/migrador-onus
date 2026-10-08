@@ -91,7 +91,7 @@ public class AdministrarUsuariosUseCase implements ManageUsersPort {
                 .orElseThrow(() -> ErrorDeNegocio.noEncontrado("El usuario " + limpio + " no existe."));
     }
 
-    private static void exigirClave(char[] clave) {
+    static void exigirClave(char[] clave) {
         if (clave == null || clave.length < PoliticaDeAcceso.LARGO_MINIMO_CLAVE) {
             throw ErrorDeNegocio.datosInvalidos("La contraseña debe tener al menos " + PoliticaDeAcceso.LARGO_MINIMO_CLAVE + " caracteres.");
         }

@@ -30,7 +30,8 @@ public class OnuClassifierModuleAdapter implements OnuClassifierPort {
 
     @Override
     public List<ClassifiedOnu> classify(BatchFilters filters) {
-        ClassifyOnusCommand command = new ClassifyOnusCommand(filters.marca(), filters.oltCodigo(), filters.tarjeta(), filters.pon());
+        ClassifyOnusCommand command = new ClassifyOnusCommand(filters.marca(), filters.oltCodigo(), filters.tarjeta(), filters.pon(),
+                filters.perfilesOrigen(), filters.sns());
         return classifier.classify(command).stream().map(OnuClassifierModuleAdapter::toLotes).toList();
     }
 

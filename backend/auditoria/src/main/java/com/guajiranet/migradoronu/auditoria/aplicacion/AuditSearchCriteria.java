@@ -9,7 +9,8 @@ import com.guajiranet.migradoronu.comun.puertos.AuditAction;
  * para que buscar un SN muestre todos sus eventos de todos los lotes, en orden.
  */
 public record AuditSearchCriteria(Instant desde, Instant hasta, Long usuarioId, Long loteId, String sn, String sistema,
-                                  String paso, String resultado, AuditAction accion, int page, int size) {
+                                  String paso, String resultado, AuditAction accion, int page, int size,
+                                  boolean recientesPrimero) {
 
     public static final int MAX_PAGE_SIZE = 500;
 
@@ -26,6 +27,6 @@ public record AuditSearchCriteria(Instant desde, Instant hasta, Long usuarioId, 
     }
 
     public static AuditSearchCriteria bySn(String sn, int page, int size) {
-        return new AuditSearchCriteria(null, null, null, null, sn, null, null, null, null, page, size);
+        return new AuditSearchCriteria(null, null, null, null, sn, null, null, null, null, page, size, false);
     }
 }

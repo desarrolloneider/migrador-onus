@@ -1,5 +1,6 @@
 import { BreakpointObserver } from '@angular/cdk/layout';
-import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, signal, viewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, afterNextRender, computed, inject, signal, viewChild } from '@angular/core';
+import { AnimacionesService } from '../core/animaciones/animaciones.service';
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { MatBadgeModule } from '@angular/material/badge';
 import { MatButtonModule } from '@angular/material/button';
@@ -47,7 +48,7 @@ interface EnlaceMenu {
         </a>
         <mat-nav-list>
           @for (enlace of enlaces; track enlace.ruta) {
-            <a mat-list-item [routerLink]="enlace.ruta" routerLinkActive #activo="routerLinkActive" [activated]="activo.isActive">
+            <a mat-list-item [routerLink]="enlace.ruta" routerLinkActive [routerLinkActiveOptions]="{ exact: enlace.ruta === '/lotes' }" #activo="routerLinkActive" [activated]="activo.isActive">
               <mat-icon matListItemIcon>{{ enlace.icono }}</mat-icon>
               <span matListItemTitle>{{ enlace.etiqueta }}</span>
               @if (enlace.ruta === '/fallidas' && fallidas() > 0) {
@@ -85,6 +86,7 @@ interface EnlaceMenu {
               <strong>{{ auth.usuario()?.nombre }}</strong>
               <span>{{ auth.usuario()?.usuario }}</span>
             </div>
+            <a mat-menu-item routerLink="/cambiar-clave"><mat-icon>key</mat-icon> Cambiar contraseña</a>
             <button mat-menu-item (click)="cerrarSesion()"><mat-icon>logout</mat-icon> Cerrar sesión</button>
           </mat-menu>
         </mat-toolbar>
@@ -93,7 +95,7 @@ interface EnlaceMenu {
           <div class="sin-conexion" role="status"><mat-icon>wifi_off</mat-icon> Sin conexión en vivo; reintentando… Los lotes siguen corriendo en el servidor.</div>
         }
 
-        <main>
+        <main #contenido (click)="alPresionar($event)">
           <router-outlet />
         </main>
       </mat-sidenav-content>
@@ -135,6 +137,7 @@ export class ShellComponent {
   protected readonly enlaces: EnlaceMenu[] = [
     { ruta: '/inicio', etiqueta: 'Inicio', icono: 'home' },
     { ruta: '/lotes/nuevo', etiqueta: 'Nuevo lote', icono: 'add_circle' },
+    { ruta: '/lotes', etiqueta: 'Lotes', icono: 'inventory_2' },
     { ruta: '/prueba-individual', etiqueta: 'Prueba individual', icono: 'labs' },
     { ruta: '/historial', etiqueta: 'Historial de ONUs', icono: 'history' },
     { ruta: '/fallidas', etiqueta: 'Fallidas por revisar', icono: 'report' },
@@ -152,6 +155,9 @@ export class ShellComponent {
     return !!estado?.ejecutorActivo && !!estado.ultimoLatido && this.ahora() - Date.parse(estado.ultimoLatido) < 30_000;
   });
 
+  private readonly animaciones = inject(AnimacionesService);
+  private readonly contenido = viewChild.required<ElementRef<HTMLElement>>('contenido');
+
   constructor() {
     const destroyRef = inject(DestroyRef);
     this.sistema.vigilar(destroyRef);
@@ -160,7 +166,20 @@ export class ShellComponent {
       if (this.esMovil()) {
         void this.menuLateral().close();
       }
+      const main = this.contenido()?.nativeElement;
+      if (main) {
+        this.animaciones.entrarPantalla(main);
+      }
     });
+    afterNextRender(() => this.animaciones.observar(this.contenido().nativeElement));
+  }
+
+  /** Un pequeño rebote en el botón que se presiona. */
+  protected alPresionar(evento: MouseEvent): void {
+    const boton = (evento.target as HTMLElement | null)?.closest('button, a.kpi, button.kpi');
+    if (boton) {
+      this.animaciones.pulsar(boton);
+    }
   }
 
   protected cerrarSesion(): void {

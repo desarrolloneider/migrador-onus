@@ -19,6 +19,7 @@ import com.guajiranet.migradoronu.acceso.dominio.ResultadoAutenticacion;
 import com.guajiranet.migradoronu.acceso.dominio.ResultadoAutenticacion.Motivo;
 import com.guajiranet.migradoronu.acceso.dominio.Usuario;
 import com.guajiranet.migradoronu.acceso.puertos.entrada.AuthenticatePort;
+import com.guajiranet.migradoronu.acceso.puertos.entrada.OwnCredentialsPort;
 import com.guajiranet.migradoronu.comun.errores.ErrorDeNegocio;
 import com.guajiranet.migradoronu.comun.seguridad.UsuarioAutenticado;
 
@@ -37,19 +38,44 @@ public class AuthController {
     public record LoginRequest(String usuario, String contrasena) {
     }
 
-    public record UsuarioSesion(long id, String usuario, String nombre) {
-        static UsuarioSesion de(UsuarioAutenticado u) {
-            return new UsuarioSesion(u.id(), u.usuario(), u.nombre());
-        }
+    public record UsuarioSesion(long id, String usuario, String nombre, boolean debeCambiarClave) {
+    }
+
+    public record CambiarCredencialesRequest(String usuarioNuevo, String claveActual, String claveNueva) {
     }
 
     private final AuthenticatePort autenticacion;
     private final SecurityContextRepository contextos;
     private final SecurityContextHolderStrategy estrategia = SecurityContextHolder.getContextHolderStrategy();
 
-    public AuthController(AuthenticatePort autenticacion, SecurityContextRepository contextos) {
+    private final OwnCredentialsPort credenciales;
+
+    public AuthController(AuthenticatePort autenticacion, SecurityContextRepository contextos, OwnCredentialsPort credenciales) {
         this.autenticacion = autenticacion;
         this.contextos = contextos;
+        this.credenciales = credenciales;
+    }
+
+    private UsuarioSesion de(UsuarioAutenticado u) {
+        return new UsuarioSesion(u.id(), u.usuario(), u.nombre(), credenciales.debeCambiarClave(u.id()));
+    }
+
+    /** Cambia la contraseña propia y, si se pide, el nombre de usuario. La sesión sigue abierta con el nombre nuevo. */
+    @PostMapping("/cambiar-credenciales")
+    public UsuarioSesion cambiarCredenciales(@RequestBody CambiarCredencialesRequest cuerpo, @AuthenticationPrincipal UsuarioAutenticado usuario,
+                                             HttpServletRequest request, HttpServletResponse response) {
+        if (usuario == null) {
+            throw new ErrorDeNegocio(ErrorDeNegocio.Tipo.SIN_SESION, "Sin sesión.");
+        }
+        Usuario u = credenciales.cambiar(usuario.id(), cuerpo.usuarioNuevo(),
+                cuerpo.claveActual() == null ? null : cuerpo.claveActual().toCharArray(),
+                cuerpo.claveNueva() == null ? null : cuerpo.claveNueva().toCharArray(), request.getRemoteAddr());
+        UsuarioAutenticado principal = new UsuarioAutenticado(u.id(), u.usuario(), u.nombre());
+        SecurityContext contexto = estrategia.createEmptyContext();
+        contexto.setAuthentication(UsernamePasswordAuthenticationToken.authenticated(principal, null, List.of()));
+        estrategia.setContext(contexto);
+        contextos.saveContext(contexto, request, response);
+        return de(principal);
     }
 
     @PostMapping("/login")
@@ -83,7 +109,7 @@ public class AuthController {
         if (usuario == null) {
             throw new ErrorDeNegocio(ErrorDeNegocio.Tipo.SIN_SESION, "Sin sesión.");
         }
-        return UsuarioSesion.de(usuario);
+        return de(usuario);
     }
 
     private UsuarioSesion abrirSesion(ResultadoAutenticacion.Exitosa exitosa, HttpServletRequest request, HttpServletResponse response) {
@@ -99,6 +125,6 @@ public class AuthController {
         contextos.saveContext(contexto, request, response);
         // Cierre por inactividad según el parámetro vigente (spec 7.5). Los lotes siguen corriendo.
         request.getSession().setMaxInactiveInterval((int) exitosa.inactividad().toSeconds());
-        return UsuarioSesion.de(principal);
+        return de(principal);
     }
 }

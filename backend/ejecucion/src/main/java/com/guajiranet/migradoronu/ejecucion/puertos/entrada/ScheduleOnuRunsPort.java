@@ -9,4 +9,8 @@ import com.guajiranet.migradoronu.ejecucion.aplicacion.ScheduleOnuRunsCommand;
 public interface ScheduleOnuRunsPort {
 
     void schedule(ScheduleOnuRunsCommand command);
+
+    /** Las fallas anteriores de estas ONUs quedan resueltas: la OLT mostró que ya tienen el perfil nuevo. */
+    default void resolverFallidas(long loteId, long usuarioId, java.util.List<String> sns) {
+    }
 }

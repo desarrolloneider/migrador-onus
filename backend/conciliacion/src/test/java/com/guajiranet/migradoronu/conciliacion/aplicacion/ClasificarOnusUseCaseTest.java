@@ -155,4 +155,98 @@ class ClasificarOnusUseCaseTest {
         assertThat(FormatoSn.normalizar("485754431a2b3c4d")).contains("485754431A2B3C4D");
         assertThat(FormatoSn.normalizar("HWTC1A2B")).isEmpty();
     }
+
+    @Test
+    void conLaOltSoloEntranLasDelPerfilOrigen() {
+        Map<String, String> enOlt = Map.of("0/0/1:26", "GUAJIRANET", "0/0/1:27", "GUAJIRANET1");
+        ClasificarOnusUseCase conOlt = conPerfilesDeOlt(Optional.of(enOlt));
+        onus.add(onu("HWTC00000026", "0/0", 26, true, "10.1.1.26", null));
+        onus.add(onu("HWTC00000027", "0/0", 27, true, "10.1.1.27", null));
+        onus.add(onu("HWTC00000028", "0/0", 28, true, "10.1.1.28", null));
+        contratos.add(new Subscriber("A", "C-26", "10.1.1.26", "enabled"));
+        contratos.add(new Subscriber("B", "C-27", "10.1.1.27", "enabled"));
+        contratos.add(new Subscriber("C", "C-28", "10.1.1.28", "enabled"));
+        Map<String, Classification> r = new HashMap<>();
+        conOlt.classify(new ClassifyOnusCommand("Huawei", null, null, null)).forEach(c -> r.put(c.onu().rawSn(), c));
+        assertThat(r.get("HWTC00000026").group()).isEqualTo(ClassificationGroup.ENTRA);
+        assertThat(r.get("HWTC00000026").onu().perfilTr069()).isEqualTo("GUAJIRANET");
+        assertThat(r.get("HWTC00000027").group()).isEqualTo(ClassificationGroup.YA_TIENE_PERFIL);
+        // Por defecto también entran las que no tienen perfil.
+        assertThat(r.get("HWTC00000028").group()).isEqualTo(ClassificationGroup.ENTRA);
+    }
+
+    @Test
+    void unaOnuConOtroPerfilQuedaFuera() {
+        ClasificarOnusUseCase conOlt = conPerfilesDeOlt(Optional.of(Map.of("0/0/1:26", "SmartOLT")));
+        onus.add(onu("HWTC00000026", "0/0", 26, true, "10.1.1.26", null));
+        contratos.add(new Subscriber("A", "C-26", "10.1.1.26", "enabled"));
+        assertThat(conOlt.classify(new ClassifyOnusCommand("Huawei", null, null, null)).getFirst().reason())
+                .isEqualTo(ExclusionReason.EXC_OTRO_PERFIL);
+    }
+
+    @Test
+    void siLaOltNoSePudoLeerNoSeAdivina() {
+        onus.add(onu("HWTC00000026", "0/0", 26, true, "10.1.1.26", null));
+        contratos.add(new Subscriber("A", "C-26", "10.1.1.26", "enabled"));
+        assertThat(conPerfilesDeOlt(Optional.empty()).classify(new ClassifyOnusCommand("Huawei", null, null, null)).getFirst().reason())
+                .isEqualTo(ExclusionReason.EXC_PERFIL_NO_LEIDO);
+    }
+
+    @Test
+    void escogiendoSinPerfilYOnusPuntuales() {
+        ClasificarOnusUseCase conOlt = conPerfilesDeOlt(Optional.of(Map.of("0/0/1:26", "GUAJIRANET")));
+        onus.add(onu("HWTC00000026", "0/0", 26, true, "10.1.1.26", null));
+        onus.add(onu("HWTC00000028", "0/0", 28, true, "10.1.1.28", null));
+        onus.add(onu("HWTC00000029", "0/0", 29, true, "10.1.1.29", null));
+        contratos.add(new Subscriber("A", "C-26", "10.1.1.26", "enabled"));
+        contratos.add(new Subscriber("C", "C-28", "10.1.1.28", "enabled"));
+        contratos.add(new Subscriber("D", "C-29", "10.1.1.29", "enabled"));
+        Map<String, Classification> r = new HashMap<>();
+        conOlt.classify(new ClassifyOnusCommand("Huawei", null, null, null, List.of(ClassifyOnusCommand.SIN_PERFIL),
+                List.of("HWTC00000026", "485754430000002" + "8"))).forEach(c -> r.put(c.onu().rawSn(), c));
+        assertThat(r).doesNotContainKey("HWTC00000029");
+        assertThat(r.get("HWTC00000028").group()).isEqualTo(ClassificationGroup.ENTRA);
+        assertThat(r.get("HWTC00000026").reason()).isEqualTo(ExclusionReason.EXC_OTRO_PERFIL);
+    }
+
+    private ClasificarOnusUseCase conPerfilesDeOlt(Optional<Map<String, String>> perfiles) {
+        return new ClasificarOnusUseCase(
+                new OnuInventoryPort() {
+                    public List<OnuCandidate> listOnus(String marca, String olt, String tarjeta, Integer pon) {
+                        return onus;
+                    }
+
+                    public List<OnuCandidate> findBySn(String sn) {
+                        return List.of();
+                    }
+                },
+                new SubscriberDirectoryPort() {
+                    public List<Subscriber> listAll() {
+                        return contratos;
+                    }
+
+                    public List<Subscriber> findByIp(String ip) {
+                        return List.of();
+                    }
+                },
+                new OltSettingsQueryPort() {
+                    public Set<String> allowedBoards(String olt) {
+                        return Set.of("0/0");
+                    }
+
+                    public boolean consoleAccessConfigured(String olt) {
+                        return true;
+                    }
+                },
+                new OnuParticipationQueryPort() {
+                    public Optional<String> activeBatchNumberOf(String sn) {
+                        return Optional.empty();
+                    }
+
+                    public Optional<UnreviewedFailure> unreviewedFailureOf(String sn) {
+                        return Optional.empty();
+                    }
+                },
+                () -> "GUAJIRANET1", Set.of("Huawei"), olt -> perfiles, () -> "GUAJIRANET");
+    }
 }

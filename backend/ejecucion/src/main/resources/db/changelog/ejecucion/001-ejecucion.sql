@@ -96,3 +96,21 @@ CREATE TABLE historial_onus (
 
 CREATE INDEX ix_historial_onus_resultado ON historial_onus (ultimo_resultado, olt_id);
 --rollback DROP TABLE historial_onus;
+
+--changeset migrador:ejecucion-002-fallidas-resueltas
+--comment: Una fallida queda resuelta cuando la misma ONU se cambia después con éxito en un lote real (o ya tenía el perfil). Así no se ofrece reintentarla ni se repite en "Fallidas por revisar".
+ALTER TABLE ejecuciones_onu ADD COLUMN resuelta_en_lote_id BIGINT REFERENCES lotes (id);
+
+UPDATE ejecuciones_onu f
+SET revisada            = TRUE,
+    revisada_por        = coalesce(f.revisada_por, l2.confirmado_por),
+    revisada_en         = coalesce(f.revisada_en, e2.terminada_en),
+    nota_revision       = coalesce(f.nota_revision, 'Resuelta: la ONU se cambió después en el lote ' || l2.numero || '.'),
+    resuelta_en_lote_id = e2.lote_id
+FROM (SELECT DISTINCT ON (e.sn) e.sn, e.lote_id, e.terminada_en
+      FROM ejecuciones_onu e JOIN lotes l ON l.id = e.lote_id
+      WHERE NOT l.simulacion AND (e.estado = 'COMPLETADA' OR (e.estado = 'EXCLUIDA_AL_EJECUTAR' AND e.codigo_fallo IS NULL))
+      ORDER BY e.sn, e.terminada_en DESC) e2
+JOIN lotes l2 ON l2.id = e2.lote_id
+WHERE f.sn = e2.sn AND f.estado = 'FALLIDA' AND f.resuelta_en_lote_id IS NULL AND f.terminada_en < e2.terminada_en;
+--rollback ALTER TABLE ejecuciones_onu DROP COLUMN resuelta_en_lote_id;

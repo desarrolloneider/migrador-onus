@@ -7,7 +7,7 @@ import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { RouterLink } from '@angular/router';
-import { auditTime, filter, startWith, switchMap } from 'rxjs';
+import { EMPTY, auditTime, catchError, filter, startWith, switchMap } from 'rxjs';
 import { mensajeDeError } from '../../../../core/api/errores';
 import { TiempoRealService } from '../../../../core/realtime/tiempo-real.service';
 import { SistemaService } from '../../../../core/sistema/sistema.service';
@@ -226,7 +226,13 @@ export class DetalleOnuComponent implements OnInit {
     this.tiempoReal.escuchar(`onu-run:${id}`).pipe(
       startWith(null),
       auditTime(200),
-      switchMap(() => this.ejecucionesService.consultar(id)),
+      switchMap(() => this.ejecucionesService.consultar(id).pipe(
+        // Un error no corta la escucha: el siguiente aviso (o sondeo) vuelve a intentar.
+        catchError((error: unknown) => {
+          this.error.set(mensajeDeError(error));
+          return EMPTY;
+        }),
+      )),
       takeUntilDestroyed(this.destroyRef),
     ).subscribe({
       next: (detalle) => this.detalle.set(detalle),

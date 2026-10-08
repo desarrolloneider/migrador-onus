@@ -29,7 +29,7 @@ import { VistaPrevia } from '../lotes/models/lote.model';
       <header class="encabezado">
         <div>
           <h1>Prueba individual</h1>
-          <p class="subtitulo">Ejecuta el procedimiento sobre una sola ONU, por ejemplo la de laboratorio, sin armar un lote. Pasa por las mismas revisiones; queda registrada como lote de modo "individual".</p>
+          <p class="subtitulo">Cambia el perfil TR-069 de <strong>una sola ONU</strong> a GUAJIRANET1. Escribe su SN y presiona "Buscar y revisar": la herramienta te muestra dónde está, su estado, su perfil actual y su contrato, y si se puede cambiar. Después escoges Simular o Ejecutar. Acepta ONUs con GUAJIRANET o sin perfil; queda registrada como un lote "individual".</p>
         </div>
       </header>
 
@@ -43,7 +43,12 @@ import { VistaPrevia } from '../lotes/models/lote.model';
         <button mat-flat-button type="submit" [disabled]="buscando()"><mat-icon>search</mat-icon> Buscar y revisar</button>
       </form>
 
-      @if (buscando()) { <mat-progress-bar mode="indeterminate" /> }
+      @if (buscando()) {
+        <mat-progress-bar mode="indeterminate" />
+        <p class="aviso"><mat-icon>hourglass_top</mat-icon>
+          <span>Buscando la ONU en SmartOLT, leyendo su perfil en la OLT y su contrato en Wispro. Normalmente tarda unos segundos;
+            si el servidor acaba de reiniciar puede tardar hasta 2 minutos mientras descarga Wispro. No cierres la página.</span></p>
+      }
       @if (error()) { <p class="aviso aviso-error" role="alert"><mat-icon>error</mat-icon> {{ error() }}</p> }
 
       @if (item(); as i) {

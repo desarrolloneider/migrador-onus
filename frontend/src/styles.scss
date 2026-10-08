@@ -172,3 +172,43 @@ pre.consola {
 
 .boton-cargando { display: inline-flex; align-items: center; gap: 8px; }
 .ancho-completo { width: 100%; }
+
+// ------------------------------------------------------------------ interacción (se ve y se siente qué es clicable)
+
+// Transiciones suaves en todo lo que responde al mouse. Las animaciones de entrada las hace GSAP (core/animaciones).
+.tarjeta, .kpi, .chip, .chip-estado, table.tabla tbody tr, .mdc-button, .mat-mdc-icon-button, .aviso {
+  transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease, background-color .18s ease;
+}
+
+// Indicadores y tarjetas que se pueden presionar se elevan al pasar el mouse.
+button.kpi:hover, a.kpi:hover, a.tarjeta:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgb(0 0 0 / .18);
+}
+.kpi .etiqueta mat-icon { transition: transform .25s ease; }
+.kpi:hover .etiqueta mat-icon { transform: scale(1.15); }
+
+// Filas clicables: se resaltan y muestran una flecha a la derecha.
+table.tabla tbody tr.clicable { cursor: pointer; position: relative; }
+table.tabla tbody tr.clicable:hover td { background: color-mix(in srgb, var(--mat-sys-primary) 7%, transparent); }
+table.tabla tbody tr.clicable td:last-child { padding-right: 32px; }
+table.tabla tbody tr.clicable td:last-child::after {
+  content: 'chevron_right'; font-family: 'Material Symbols Outlined'; font-feature-settings: 'liga'; font-size: 20px; line-height: 1;
+  position: absolute; right: 8px; top: 50%; transform: translate(-4px, -50%); opacity: 0;
+  color: var(--mat-sys-primary); transition: opacity .18s ease, transform .18s ease;
+}
+table.tabla tbody tr.clicable:hover td:last-child::after { opacity: 1; transform: translate(0, -50%); }
+table.tabla tbody tr.clicable:focus-visible { outline: 2px solid var(--mat-sys-primary); outline-offset: -2px; }
+
+// Botones de chips/filtros con respuesta al pasar el mouse.
+.chip:hover { border-color: var(--mat-sys-primary); }
+
+// Íconos de los avisos con un leve pulso para llamar la atención sin molestar.
+.aviso-error > mat-icon, .aviso-advertencia > mat-icon { animation: latido 2.4s ease-in-out infinite; }
+@keyframes latido { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.12); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .tarjeta, .kpi, .chip, .chip-estado, table.tabla tbody tr, .mdc-button, .mat-mdc-icon-button, .aviso { transition: none; }
+  .aviso-error > mat-icon, .aviso-advertencia > mat-icon { animation: none; }
+  button.kpi:hover, a.kpi:hover, a.tarjeta:hover { transform: none; }
+}

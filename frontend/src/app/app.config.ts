@@ -1,3 +1,5 @@
+import { MatPaginatorIntl } from '@angular/material/paginator';
+import { PaginadorEnEspanol } from './shared/paginacion/paginador-es';
 import { registerLocaleData } from '@angular/common';
 import { provideHttpClient, withInterceptors, withXsrfConfiguration } from '@angular/common/http';
 import localeEsCo from '@angular/common/locales/es-CO';
@@ -24,6 +26,7 @@ registerLocaleData(localeEsCo);
 export const appConfig: ApplicationConfig = {
   providers: [
     provideBrowserGlobalErrorListeners(),
+    { provide: MatPaginatorIntl, useClass: PaginadorEnEspanol },
     provideZoneChangeDetection({ eventCoalescing: true }),
     provideRouter(routes, withComponentInputBinding()),
     provideHttpClient(

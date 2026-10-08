@@ -28,19 +28,62 @@ export class TiempoRealService {
     return new Observable<EventoEnVivo>((suscriptor) => {
       let suscripcion: StompSubscription | undefined;
       const cliente = new Client({ brokerURL: this.urlWebSocket(), reconnectDelay: 3_000 });
+      let cerrando = false;
       cliente.onConnect = () => {
-        this.estadoConexion.set('CONECTADO');
-        suscripcion = cliente.subscribe(`/topic/${canal}`, (mensaje) => suscriptor.next(JSON.parse(mensaje.body)));
+        this.caidos.delete(cliente);
+        this.actualizarEstado();
+        try {
+          suscripcion = cliente.subscribe(`/topic/${canal}`, (mensaje) => {
+          try {
+            suscriptor.next(JSON.parse(mensaje.body));
+          } catch {
+            // Un aviso mal formado se ignora: igual se vuelve a pedir el dato con el sondeo.
+            suscriptor.next({ canal, tipo: 'SONDEO', datos: {} });
+          }
+          });
+        } catch (error) {
+          console.warn('No se pudo escuchar el canal en vivo', canal, error);
+        }
         // Al (re)conectar se avisa, para que la pantalla se ponga al día con lo que pasó mientras tanto.
         suscriptor.next({ canal, tipo: 'RECONECTADO', datos: {} });
       };
-      cliente.onWebSocketClose = () => this.estadoConexion.set('RECONECTANDO');
-      cliente.activate();
+      // Cerrar a propósito (al salir de la pantalla) no es una caída.
+      cliente.onWebSocketClose = () => {
+        if (!cerrando) {
+          this.caidos.add(cliente);
+          this.actualizarEstado();
+        }
+      };
+      // Si el navegador no deja abrir el WebSocket, la pantalla sigue funcionando con el sondeo: nunca se corta.
+      try {
+        cliente.activate();
+      } catch (error) {
+        console.warn('No se pudo abrir la conexión en vivo; se sigue con consultas periódicas.', error);
+        this.caidos.add(cliente);
+        this.actualizarEstado();
+      }
+      // El proceso ejecutor todavía no publica avisos: mientras tanto la pantalla vuelve a pedir el dato cada 4 segundos.
+      const sondeo = setInterval(() => suscriptor.next({ canal, tipo: 'SONDEO', datos: {} }), 4_000);
       return () => {
-        suscripcion?.unsubscribe();
-        void cliente.deactivate();
+        cerrando = true;
+        this.caidos.delete(cliente);
+        this.actualizarEstado();
+        clearInterval(sondeo);
+        try {
+          suscripcion?.unsubscribe();
+          void cliente.deactivate();
+        } catch {
+          // Ya estaba cerrada.
+        }
       };
     });
+  }
+
+  /** Las conexiones abiertas por una pantalla que se cayeron y están reintentando. */
+  private readonly caidos = new Set<Client>();
+
+  private actualizarEstado(): void {
+    this.estadoConexion.set(this.caidos.size > 0 ? 'RECONECTANDO' : 'CONECTADO');
   }
 
   private urlWebSocket(): string {

@@ -25,4 +25,9 @@ public interface UserRepositoryPort {
     Map<Long, String> nombres(Collection<Long> ids);
 
     Set<Long> idsQueCoinciden(String texto);
+
+    boolean debeCambiarClave(long id);
+
+    /** Cambia usuario, huella y la marca de cambio obligatorio. Lanza CONFLICTO si el usuario nuevo ya existe. */
+    void cambiarCredenciales(long id, String usuario, String hashClave, boolean debeCambiarClave);
 }

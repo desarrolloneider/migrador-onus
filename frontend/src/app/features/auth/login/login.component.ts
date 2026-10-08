@@ -69,7 +69,7 @@ import { AuthService } from '../../../core/auth/auth.service';
           <p class="pista"><mat-icon>science</mat-icon>
             <span>Datos de ejemplo: usuario <code>{{ ejemplo.usuario }}</code> y contraseña <code>{{ ejemplo.contrasena }}</code>.</span></p>
         }
-        <p class="pie">Herramienta interna de GuajiraNet. Los usuarios los crea el administrador por consola en el servidor.</p>
+        <p class="pie">Herramienta interna de GuajiraNet. El primer ingreso es con el usuario y la contraseña inicial del servidor; la página te pedirá cambiarla.</p>
       </section>
     </div>
   `,
@@ -117,7 +117,7 @@ export class LoginComponent {
     this.auth.iniciarSesion(this.formulario.getRawValue())
       .pipe(finalize(() => this.entrando.set(false)))
       .subscribe({
-        next: () => void this.router.navigate(['/inicio']),
+        next: () => void this.router.navigate([this.auth.destinoInicial()]),
         error: (error: unknown) => this.error.set(mensajeDeError(error)),
       });
   }

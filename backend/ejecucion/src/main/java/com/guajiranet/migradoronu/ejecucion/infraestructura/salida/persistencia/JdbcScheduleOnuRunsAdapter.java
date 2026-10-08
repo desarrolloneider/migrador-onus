@@ -33,4 +33,20 @@ public class JdbcScheduleOnuRunsAdapter implements ScheduleOnuRunsPort {
                 .params(command.items().size(), command.loteId())
                 .update();
     }
+
+    @Override
+    public void resolverFallidas(long loteId, long usuarioId, java.util.List<String> sns) {
+        for (String sn : sns) {
+            jdbc.sql("""
+                            UPDATE ejecuciones_onu f
+                            SET revisada = TRUE, revisada_por = coalesce(f.revisada_por, ?), revisada_en = coalesce(f.revisada_en, now()),
+                                nota_revision = coalesce(f.nota_revision, 'Resuelta: la OLT ya muestra el perfil nuevo (vista previa '
+                                    || (SELECT numero FROM lotes WHERE id = ?) || ').'),
+                                resuelta_en_lote_id = ?
+                            WHERE f.sn = ? AND f.estado = 'FALLIDA' AND f.resuelta_en_lote_id IS NULL
+                            """)
+                    .params(usuarioId, loteId, loteId, sn)
+                    .update();
+        }
+    }
 }

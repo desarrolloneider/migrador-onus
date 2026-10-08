@@ -69,9 +69,32 @@ public class SmartOltInventoryAdapter implements OnuInventoryPort {
     @Override
     public synchronized List<OnuCandidate> findBySn(String sn) {
         String buscado = FormatoSn.normalizar(sn).orElse(sn.strip().toUpperCase(Locale.ROOT));
-        return inventarioCompleto().stream()
-                .filter(o -> buscado.equals(FormatoSn.normalizar(o.rawSn()).orElse(o.rawSn().toUpperCase(Locale.ROOT))))
-                .toList();
+        java.util.function.Predicate<OnuCandidate> mismoSn =
+                o -> buscado.equals(FormatoSn.normalizar(o.rawSn()).orElse(o.rawSn().toUpperCase(Locale.ROOT)));
+        // Con el inventario recién descargado no hace falta preguntar. Si no, se usa el filtro sn de SmartOLT (una sola
+        // consulta paginada) con el SN como lo escribe SmartOLT (HWTC47ADC1B3) y en hexadecimal.
+        if (Duration.between(inventarioLeidoEn, reloj.instant()).compareTo(VIGENCIA_INVENTARIO) <= 0) {
+            return inventario.stream().filter(mismoSn).toList();
+        }
+        for (String forma : formasDeConsulta(buscado)) {
+            List<OnuCandidate> encontradas = convertir(cliente.get().onus(Map.of("sn", forma))).stream().filter(mismoSn).toList();
+            if (!encontradas.isEmpty()) {
+                return encontradas;
+            }
+        }
+        // No apareció con el filtro: se confirma contra el inventario completo antes de decir que no existe.
+        return inventarioCompleto().stream().filter(mismoSn).toList();
+    }
+
+    /** {@code 4857544347ADC1B3} se consulta como {@code HWTC47ADC1B3} y como {@code 4857544347ADC1B3}. */
+    static List<String> formasDeConsulta(String snComun) {
+        if (snComun.matches("[0-9A-F]{16}")) {
+            String fabricante = new String(java.util.HexFormat.of().parseHex(snComun.substring(0, 8)), java.nio.charset.StandardCharsets.US_ASCII);
+            if (fabricante.matches("[A-Z]{4}")) {
+                return List.of(fabricante + snComun.substring(8), snComun);
+            }
+        }
+        return List.of(snComun);
     }
 
     private List<OnuCandidate> inventarioCompleto() {

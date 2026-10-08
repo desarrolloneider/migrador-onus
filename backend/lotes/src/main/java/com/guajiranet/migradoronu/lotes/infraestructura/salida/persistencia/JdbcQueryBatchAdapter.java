@@ -32,6 +32,11 @@ public class JdbcQueryBatchAdapter implements QueryBatchPort {
     }
 
     @Override
+    public Optional<BatchView> findByNumero(String numero) {
+        return jdbc.sql(COLUMNAS + "WHERE numero = ?").param(numero.strip().toUpperCase()).query(JdbcQueryBatchAdapter::fila).optional();
+    }
+
+    @Override
     public Optional<BatchView> findRunning() {
         return jdbc.sql(COLUMNAS + "WHERE estado IN ('EN_EJECUCION', 'DETENIENDOSE') ORDER BY creado_en DESC LIMIT 1")
                 .query(JdbcQueryBatchAdapter::fila).optional();

@@ -15,3 +15,8 @@ CREATE TABLE usuarios (
     CONSTRAINT uk_usuarios_usuario UNIQUE (usuario)
 );
 --rollback DROP TABLE usuarios;
+
+--changeset migrador:acceso-002-debe-cambiar-clave
+--comment: El usuario inicial (del .env) entra con una contraseña conocida y la pantalla le exige cambiarla antes de hacer cualquier otra cosa.
+ALTER TABLE usuarios ADD COLUMN debe_cambiar_clave BOOLEAN NOT NULL DEFAULT FALSE;
+--rollback ALTER TABLE usuarios DROP COLUMN debe_cambiar_clave;

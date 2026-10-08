@@ -25,6 +25,7 @@
         <archunit.version>1.5.1</archunit.version>
         <!-- Argon2PasswordEncoder de Spring Security la necesita (arquitectura 11.1). -->
         <bouncycastle.version>1.86</bouncycastle.version>
+        <sshd.version>2.20.0</sshd.version>
     </properties>
 
     <!-- Orden: primero lo que no depende de nadie. ensamblaje une los módulos (corrección 2a, docs/adr/0002). -->
@@ -46,6 +47,11 @@
 
     <dependencyManagement>
         <dependencies>
+            <dependency>
+                <groupId>org.apache.sshd</groupId>
+                <artifactId>sshd-core</artifactId>
+                <version>${sshd.version}</version>
+            </dependency>
             <dependency>
                 <groupId>com.guajiranet.migradoronu</groupId>
                 <artifactId>comun</artifactId>

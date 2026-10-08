@@ -42,6 +42,10 @@ import com.guajiranet.migradoronu.lotes.puertos.salida.TransactionPort;
 public class LotesUseCase implements BuildBatchPort, ControlBatchPort, QueryBatchDetailsPort {
 
     static final String HUELLA = "_huella";
+    /** Perfiles de origen escogidos al armar ("SIN_PERFIL" para las sin perfil); los lee el ejecutor. */
+    static final String PERFILES_ORIGEN = "_perfiles_origen";
+    /** SN escogidos uno por uno al armar, para repetir la simulación de verdad con las mismas ONUs. */
+    static final String SNS = "_sns";
 
     private final OnuClassifierPort clasificador;
     private final ParametersSnapshotPort parametros;
@@ -84,8 +88,31 @@ public class LotesUseCase implements BuildBatchPort, ControlBatchPort, QueryBatc
     public BatchView buildSingleOnuPreview(BuildSingleOnuPreviewCommand command) {
         ClassifiedOnu onu = clasificador.classifySingle(command.sn())
                 .orElseThrow(() -> ErrorDeNegocio.noEncontrado("La ONU " + command.sn() + " no está en SmartOLT."));
-        BatchFilters filtros = new BatchFilters(onu.marca() == null ? "Desconocida" : onu.marca(), null, null, null);
+        // El ejecutor acepta como origen el perfil que la OLT mostró al armar (o "sin perfil"), y nada más.
+        BatchFilters filtros = new BatchFilters(onu.marca() == null ? "Desconocida" : onu.marca(), null, null, null,
+                List.of(onu.perfilActual() == null ? "SIN_PERFIL" : onu.perfilActual()), List.of(onu.sn()));
         return guardar(BatchMode.INDIVIDUAL, filtros, command.usuarioId(), List.of(onu), parametros.current());
+    }
+
+    @Override
+    public BatchView rebuildFromSimulation(long loteId, long usuarioId) {
+        LoteDetalle lote = lotes.detalle(loteId).orElseThrow(() -> ErrorDeNegocio.noEncontrado("No existe el lote " + loteId + "."));
+        if (!lote.simulacion() || !lote.estado().isFinal() || lote.estado() == BatchStatus.DESCARTADO) {
+            throw ErrorDeNegocio.conflicto("Solo se puede repetir de verdad una simulación que ya terminó.");
+        }
+        if (lote.modo() == BatchMode.INDIVIDUAL) {
+            String sn = lotes.items(loteId).stream().findFirst().map(ClassifiedOnu::sn)
+                    .orElseThrow(() -> ErrorDeNegocio.conflicto("La simulación no tiene ninguna ONU."));
+            return buildSingleOnuPreview(new BuildSingleOnuPreviewCommand(usuarioId, sn));
+        }
+        Map<String, Object> usados = lotes.parametrosDeVistaPrevia(loteId);
+        BatchFilters f = lote.filtros();
+        return buildPreview(new BuildBatchCommand(usuarioId, new BatchFilters(f.marca(), f.oltCodigo(), f.tarjeta(), f.pon(),
+                textos(usados.get(PERFILES_ORIGEN)), textos(usados.get(SNS)))));
+    }
+
+    private static List<String> textos(Object valor) {
+        return valor instanceof List<?> lista ? lista.stream().map(String::valueOf).toList() : null;
     }
 
     private BatchView guardar(BatchMode modo, BatchFilters filtros, long usuarioId, List<ClassifiedOnu> clasificadas,
@@ -100,10 +127,21 @@ public class LotesUseCase implements BuildBatchPort, ControlBatchPort, QueryBatc
                 .thenComparingInt(ClassifiedOnu::onuId));
         Map<String, Object> congelados = new LinkedHashMap<>(snapshot.values());
         congelados.put(HUELLA, snapshot.fingerprint());
+        if (filtros.perfilesOrigen() != null) {
+            congelados.put(PERFILES_ORIGEN, filtros.perfilesOrigen());
+        }
+        if (filtros.sns() != null) {
+            congelados.put(SNS, filtros.sns());
+        }
         long id = transacciones.enTransaccion(() -> {
             BatchNumber numero = BatchNumber.of(ahora.atZone(ZoneOffset.UTC).getYear(), lotes.siguienteConsecutivo());
             return lotes.crearVistaPrevia(numero, modo, filtros, usuarioId, ahora, vence, congelados, ordenadas);
         });
+        // Las que la OLT muestra ya con el perfil nuevo resuelven sus fallas anteriores (no se ofrecen para reintentar).
+        List<String> yaCorregidas = ordenadas.stream().filter(c -> c.grupo() == ItemGroup.YA_TIENE_PERFIL).map(ClassifiedOnu::sn).toList();
+        if (!yaCorregidas.isEmpty()) {
+            ejecuciones.yaTienenElPerfil(id, usuarioId, yaCorregidas);
+        }
         LoteDetalle lote = lotes.detalle(id).orElseThrow();
         Map<String, Object> peticion = new LinkedHashMap<>();
         peticion.put("marca", filtros.marca());
@@ -138,7 +176,8 @@ public class LotesUseCase implements BuildBatchPort, ControlBatchPort, QueryBatc
                 throw ErrorDeNegocio.conflicto("La vista previa venció. Arma una nueva para ver los datos actuales.");
             }
             ParametersSnapshot actual = parametros.current();
-            Object huella = lotes.parametrosDeVistaPrevia(lote.id()).get(HUELLA);
+            Map<String, Object> deLaVistaPrevia = lotes.parametrosDeVistaPrevia(lote.id());
+            Object huella = deLaVistaPrevia.get(HUELLA);
             if (!actual.fingerprint().equals(huella)) {
                 throw ErrorDeNegocio.conflicto("La configuración cambió después de armar la vista previa (RN-36). Arma una nueva.");
             }
@@ -147,6 +186,11 @@ public class LotesUseCase implements BuildBatchPort, ControlBatchPort, QueryBatc
             String version = procedimientoVersion.get();
             Map<String, Object> congelados = new LinkedHashMap<>(actual.values());
             congelados.put(HUELLA, actual.fingerprint());
+            for (String clave : List.of(PERFILES_ORIGEN, SNS)) {
+                if (deLaVistaPrevia.get(clave) != null) {
+                    congelados.put(clave, deLaVistaPrevia.get(clave));
+                }
+            }
             lotes.confirmar(lote.id(), command.usuarioId(), command.simulacion(), ahora, congelados, version);
             ejecuciones.schedule(lote.id(), version, entran);
             LoteDetalle confirmado = lotes.detalle(lote.id()).orElseThrow();
