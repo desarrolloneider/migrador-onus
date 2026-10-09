@@ -20,7 +20,7 @@ import com.guajiranet.migradoronu.conciliacion.puertos.salida.OnuInventoryPort;
 public class ConsultarOnusDeOlt {
 
     /** @param perfil el nombre del perfil en la OLT; null si no tiene o no se pudo leer */
-    public record OnuDeOlt(String sn, String modelo, String tarjeta, int pon, int onuId, boolean enLinea, String ip, String perfil) {
+    public record OnuDeOlt(String sn, String marca, String modelo, String tarjeta, int pon, int onuId, boolean enLinea, String ip, String perfil) {
     }
 
     /**
@@ -44,7 +44,7 @@ public class ConsultarOnusDeOlt {
         List<OnuCandidate> candidatas = smartOlt.listOnus(null, oltCodigo, null, null);
         Optional<Map<String, String>> perfiles = perfilesOlt.perfiles(oltCodigo);
         List<OnuDeOlt> onus = candidatas.stream()
-                .map(o -> new OnuDeOlt(FormatoSn.normalizar(o.rawSn()).orElse(o.rawSn()), o.modelo(), o.position().tarjeta(),
+                .map(o -> new OnuDeOlt(FormatoSn.normalizar(o.rawSn()).orElse(o.rawSn()), o.marca(), o.modelo(), o.position().tarjeta(),
                         o.position().pon(), o.position().onuId(), o.enLinea(), o.ip(),
                         perfiles.map(m -> m.get(o.position().tarjeta() + "/" + o.position().pon() + ":" + o.position().onuId())).orElse(null)))
                 .sorted(Comparator.comparing(OnuDeOlt::tarjeta).thenComparingInt(OnuDeOlt::pon).thenComparingInt(OnuDeOlt::onuId))

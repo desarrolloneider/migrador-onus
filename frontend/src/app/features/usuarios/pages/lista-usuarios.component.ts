@@ -77,7 +77,7 @@ import { ConClaveTemporal, FichaUsuario, UsuariosService } from '../data/usuario
         @if (cargando()) { <mat-progress-bar mode="indeterminate" /> }
         <div class="contenedor-tabla">
           <table class="tabla">
-            <thead><tr><th>Usuario</th><th>Estado</th><th>Rol y módulos</th><th>Último ingreso</th><th>Creado</th></tr></thead>
+            <thead><tr><th>Usuario</th><th>Estado</th><th>Rol y módulos</th><th>Último ingreso</th><th>Creado</th><th></th></tr></thead>
             <tbody>
               @for (u of usuarios(); track u.id) {
                 <tr class="clicable" (click)="abrir(u)" tabindex="0" (keydown.enter)="abrir(u)">
@@ -104,6 +104,7 @@ import { ConClaveTemporal, FichaUsuario, UsuariosService } from '../data/usuario
                   </td>
                   <td>{{ u.ultimoIngresoEn ? (u.ultimoIngresoEn | horaColombia) : 'Nunca' }}</td>
                   <td>{{ u.creadoEn | horaColombia }}</td>
+                  <td class="editar"><button mat-stroked-button type="button" (click)="$event.stopPropagation(); abrir(u)"><mat-icon>edit</mat-icon> Editar</button></td>
                 </tr>
               }
             </tbody>
@@ -135,6 +136,7 @@ import { ConClaveTemporal, FichaUsuario, UsuariosService } from '../data/usuario
     .secundario { color: var(--mat-sys-on-surface-variant); font-size: 12.5px; }
     .iconos-modulos { display: inline-flex; gap: 6px; color: var(--mat-sys-primary); }
     .iconos-modulos mat-icon { font-size: 20px; width: 20px; height: 20px; }
+    .editar { text-align: right; white-space: nowrap; }
   `,
 })
 export class ListaUsuariosComponent {

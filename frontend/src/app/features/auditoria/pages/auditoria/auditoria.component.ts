@@ -80,13 +80,13 @@ import { ACCIONES_AUDITORIA, FiltrosAuditoria, PaginaAuditoria, ResultadoIntegri
             @for (e of pagina()?.eventos ?? []; track e.id) {
               <tr class="clicable" (click)="alternar(e.id)" [attr.aria-expanded]="abierto() === e.id">
                 <td class="hora">{{ e.ocurridoEn | horaColombia: 'completa' }}</td>
-                <td class="sin-corte"><mat-icon class="actor" [attr.aria-label]="actores[e.actorTipo]">{{ iconoActor(e.actorTipo) }}</mat-icon> {{ e.usuario ?? actores[e.actorTipo] }}</td>
-                <td class="mono accion">{{ e.accion }}</td>
+                <td class="sin-corte"><span class="quien"><span class="avatar-actor" [class.sistema]="e.actorTipo !== 'USUARIO'"><mat-icon [attr.aria-label]="actores[e.actorTipo]">{{ iconoActor(e.actorTipo) }}</mat-icon></span> {{ e.usuario ?? actores[e.actorTipo] }}</span></td>
+                <td><span class="accion tono-{{ estiloAccion(e.accion).tono }}" [attr.title]="e.accion"><mat-icon>{{ estiloAccion(e.accion).icono }}</mat-icon>{{ legible(e.accion) }}</span></td>
                 <td class="sin-corte">@if (e.loteId) { <a class="mono" [routerLink]="['/lotes', e.loteId]" (click)="$event.stopPropagation()">{{ e.loteNumero }}</a> }</td>
                 <td class="mono">{{ e.sn ?? '' }}</td>
-                <td class="mono">{{ e.paso ?? '' }}</td>
+                <td>@if (e.paso) { <span class="paso">{{ e.paso }}</span> }</td>
                 <td>{{ e.sistema ?? '' }}</td>
-                <td><span class="resultado" [class]="'resultado r-' + (e.resultado ?? '')">{{ e.resultado ?? '' }}</span></td>
+                <td>@if (e.resultado) { <span [class]="'resultado r-' + e.resultado">{{ e.resultado }}</span> }</td>
                 <td class="mensaje">{{ e.mensaje ?? '' }}</td>
               </tr>
               @if (abierto() === e.id) {
@@ -117,18 +117,55 @@ import { ACCIONES_AUDITORIA, FiltrosAuditoria, PaginaAuditoria, ResultadoIntegri
   styles: `
     .hora, .sin-corte { white-space: nowrap; }
     .hora { font-variant-numeric: tabular-nums; }
-    .accion { font-size: 12px; }
-    .actor { font-size: 18px; width: 18px; height: 18px; vertical-align: -4px; color: var(--mat-sys-on-surface-variant); }
-    .resultado { font-size: 12px; font-weight: 600; }
+    .quien { display: inline-flex; align-items: center; gap: 8px; }
+    .avatar-actor { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; flex: none;
+      background: var(--mat-sys-primary-container); color: var(--mat-sys-on-primary-container); }
+    .avatar-actor.sistema { background: var(--mat-sys-surface-container-highest); color: var(--mat-sys-on-surface-variant); }
+    .avatar-actor mat-icon { font-size: 16px; width: 16px; height: 16px; }
+    .accion { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px 3px 8px; border-radius: 999px; font-size: 12px; font-weight: 600;
+      white-space: nowrap; background: var(--fondo-tono, var(--mat-sys-surface-container-highest)); color: var(--color-tono, inherit); }
+    .accion mat-icon { font-size: 15px; width: 15px; height: 15px; }
+    .paso { font-family: var(--fuente-mono); font-size: 12px; padding: 1px 6px; border-radius: 6px; background: var(--mat-sys-surface-container-highest); }
+    .resultado { display: inline-block; font-size: 11.5px; font-weight: 700; padding: 2px 8px; border-radius: 6px; letter-spacing: .02em;
+      background: var(--mat-sys-surface-container-highest); }
+    .r-FALLIDO, .r-FALLIDA, .r-FALLO, .r-ROTA, .r-RECHAZADA, .r-BLOQUEADO { background: var(--fondo-error); }
+    .r-OK, .r-INTACTA, .r-TERMINADO, .r-REVISADA, .r-COMPLETADA { background: var(--fondo-exito); }
+    .r-SIMULADO, .r-SIMULADA { background: var(--fondo-simulado); }
     .r-FALLIDO, .r-FALLIDA, .r-ROTA, .r-RECHAZADA, .r-BLOQUEADO { color: var(--color-error); }
     .r-OK, .r-INTACTA, .r-TERMINADO, .r-REVISADA { color: var(--color-exito); }
-    .r-SIMULADO { color: var(--color-simulado); }
+    .r-SIMULADO, .r-SIMULADA { color: var(--color-simulado); }
+    .r-FALLO { color: var(--color-error); }
+    .r-COMPLETADA { color: var(--color-exito); }
+    .mensaje { max-width: 420px; }
     .json { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; }
     .json pre { max-height: 260px; }
     @media (max-width: 800px) { .json { grid-template-columns: 1fr; } }
   `,
 })
 export class AuditoriaComponent implements OnInit {
+  /** Ícono y color de cada acción, por familia, para leer la tabla de un vistazo. */
+  protected estiloAccion(accion: string): { icono: string; tono: string } {
+    const a = accion ?? '';
+    if (/FALLID|RECHAZ|BLOQUE|ROTA|FALLO/.test(a)) return { icono: 'error', tono: 'error' };
+    if (/COMPLETAD|REVISAD|RESUELT/.test(a)) return { icono: 'task_alt', tono: 'exito' };
+    if (/SIMULAD/.test(a)) return { icono: 'science', tono: 'simulado' };
+    if (/SESION|CLAVE|CREDENCIAL/.test(a)) return { icono: 'login', tono: 'info' };
+    if (/USUARIO/.test(a)) return { icono: 'manage_accounts', tono: 'info' };
+    if (/EJECUTOR/.test(a)) return { icono: 'memory', tono: 'neutro' };
+    if (/VISTA_PREVIA|LOTE/.test(a)) return { icono: 'inventory_2', tono: 'progreso' };
+    if (/COMANDO|PASO/.test(a)) return { icono: 'terminal', tono: 'neutro' };
+    if (/PARAMETRO|TARJETAS|ACCESO_OLT|HUELLA/.test(a)) return { icono: 'settings', tono: 'aviso' };
+    if (/EXCLUIDA/.test(a)) return { icono: 'block', tono: 'aviso' };
+    return { icono: 'bolt', tono: 'neutro' };
+  }
+
+  /** SESION_INICIADA → "Sesión iniciada". */
+  protected legible(accion: string): string {
+    const texto = (accion ?? '').toLowerCase().replace(/_/g, ' ')
+      .replace(/\bsesion\b/, 'sesión').replace(/\bonu\b/, 'ONU').replace(/\bolt\b/, 'OLT').replace(/\bparametro\b/, 'parámetro');
+    return texto.charAt(0).toUpperCase() + texto.slice(1);
+  }
+
   private readonly auditoriaService = inject(AuditoriaService);
   private readonly destroyRef = inject(DestroyRef);
 

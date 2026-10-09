@@ -13,7 +13,7 @@ import java.util.regex.Pattern;
 public final class FormatoSn {
 
     private static final Pattern HEX16 = Pattern.compile("[0-9A-F]{16}");
-    private static final Pattern FABRICANTE_Y_HEX8 = Pattern.compile("([A-Z]{4})([0-9A-F]{8})");
+    private static final Pattern FABRICANTE_Y_HEX8 = Pattern.compile("([A-Z0-9]{4})([0-9A-F]{8})");
 
     private FormatoSn() {
     }

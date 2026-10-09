@@ -10,6 +10,15 @@ html {
                  brand-family: '"Segoe UI Variable", "Segoe UI", Roboto, system-ui, sans-serif'),
     density: -1,
   ));
+  // Azul GuajiraNet (#0868C4, el de la "j" del logo). En oscuro, el mismo tono más claro para que se lea.
+  --mat-sys-primary: light-dark(#0868c4, #9ccaff);
+  --mat-sys-on-primary: light-dark(#ffffff, #00315f);
+  --mat-sys-primary-container: light-dark(#d5e4ff, #0a4f94);
+  --mat-sys-on-primary-container: light-dark(#001c3b, #d5e4ff);
+  --mat-sys-inverse-primary: light-dark(#9ccaff, #0868c4);
+  --color-marca: #0868c4;
+  // El azul noche de GuajiraNet (barras y cabeceras), de #0d3a70 a #071a33.
+  --fondo-marca: linear-gradient(115deg, #0d3a70 0%, #0a2b55 55%, #071a33 100%);
 }
 
 :root {

@@ -55,11 +55,14 @@ import { ClaveTemporalComponent } from './clave-temporal.component';
 
         <div class="disposicion">
           <section class="tarjeta">
-            <h2><mat-icon>tune</mat-icon> Permisos</h2>
+            <h2><mat-icon>edit</mat-icon> Editar usuario</h2>
             <mat-form-field class="ancho-completo">
               <mat-label>Nombre completo</mat-label>
-              <input matInput [(ngModel)]="nombre" />
+              <mat-icon matPrefix>badge</mat-icon>
+              <input matInput [(ngModel)]="nombre" placeholder="Nombre y apellido de la persona" maxlength="120" />
+              <mat-hint>El usuario para entrar (<span class="mono">{{ u.usuario }}</span>) no cambia.</mat-hint>
             </mat-form-field>
+            <h3 class="sub">Permisos</h3>
             <mat-slide-toggle [(ngModel)]="administrador" [disabled]="esYo()">Administrador
               <span class="secundario">{{ esYo() ? '(no te lo puedes quitar a ti mismo)' : '(puede todo, incluida la gestión de usuarios)' }}</span></mat-slide-toggle>
             @if (!administrador) {
@@ -73,7 +76,7 @@ import { ClaveTemporalComponent } from './clave-temporal.component';
               </div>
             }
             <div class="acciones">
-              <button mat-flat-button type="button" (click)="guardar()" [disabled]="guardando()"><mat-icon>save</mat-icon> Guardar permisos</button>
+              <button mat-flat-button type="button" (click)="guardar()" [disabled]="guardando()"><mat-icon>save</mat-icon> Guardar cambios</button>
             </div>
           </section>
 
@@ -121,6 +124,7 @@ import { ClaveTemporalComponent } from './clave-temporal.component';
     </div>
   `,
   styles: `
+    .sub { margin: 12px 0 4px; font: var(--mat-sys-title-small); color: var(--mat-sys-on-surface-variant); }
     .persona { display: flex; align-items: center; gap: 14px; }
     .avatar { width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; font-size: 18px; flex: none;
       background: var(--mat-sys-primary-container); color: var(--mat-sys-on-primary-container); }
@@ -196,7 +200,7 @@ export class FichaUsuarioComponent implements OnInit {
     }).pipe(finalize(() => this.guardando.set(false))).subscribe({
       next: (f) => {
         this.mostrar(f);
-        this.avisos.open('Permisos guardados. Aplican desde su siguiente acción.', 'Cerrar', { duration: 4_000 });
+        this.avisos.open('Cambios guardados. Los permisos aplican desde su siguiente acción.', 'Cerrar', { duration: 4_000 });
         this.cargarActividad();
       },
       error: (e: unknown) => this.avisos.open(mensajeDeError(e), 'Cerrar', { duration: 8_000 }),

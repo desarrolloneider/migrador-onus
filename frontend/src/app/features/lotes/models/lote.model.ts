@@ -110,6 +110,7 @@ export interface ConfirmarLoteRequest {
 /** Una ONU de una OLT con su estado (SmartOLT) y su perfil TR-069 real (leído en la OLT). */
 export interface OnuDeOlt {
   sn: string;
+  marca: string | null;
   modelo: string | null;
   tarjeta: string;
   pon: number;

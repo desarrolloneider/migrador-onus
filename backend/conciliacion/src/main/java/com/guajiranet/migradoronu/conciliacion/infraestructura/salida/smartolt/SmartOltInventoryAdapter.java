@@ -91,7 +91,7 @@ public class SmartOltInventoryAdapter implements OnuInventoryPort {
     static List<String> formasDeConsulta(String snComun) {
         if (snComun.matches("[0-9A-F]{16}")) {
             String fabricante = new String(java.util.HexFormat.of().parseHex(snComun.substring(0, 8)), java.nio.charset.StandardCharsets.US_ASCII);
-            if (fabricante.matches("[A-Z]{4}")) {
+            if (fabricante.matches("[A-Z0-9]{4}")) {
                 return List.of(fabricante + snComun.substring(8), snComun);
             }
         }
@@ -157,7 +157,7 @@ public class SmartOltInventoryAdapter implements OnuInventoryPort {
         String prefijo = sn.strip().toUpperCase(Locale.ROOT);
         if (prefijo.matches("[0-9A-F]{16}")) {
             String ascii = new String(java.util.HexFormat.of().parseHex(prefijo.substring(0, 8)), java.nio.charset.StandardCharsets.US_ASCII);
-            if (ascii.matches("[A-Z]{4}")) {
+            if (ascii.matches("[A-Z0-9]{4}")) {
                 prefijo = ascii;
             }
         }

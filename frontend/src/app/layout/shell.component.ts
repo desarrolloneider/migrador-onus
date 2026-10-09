@@ -43,11 +43,8 @@ interface EnlaceMenu {
     <mat-sidenav-container class="contenedor">
       <mat-sidenav #menu [mode]="esMovil() ? 'over' : 'side'" [opened]="!esMovil()" class="menu-lateral">
         <a routerLink="/inicio" class="marca">
-          <span class="logo"><mat-icon>router</mat-icon></span>
-          <span>
-            <span class="nombre">Migrador de ONUs</span>
-            <span class="detalle">GuajiraNet · fase 1</span>
-          </span>
+          <img class="logo-guajiranet" src="marca/guajiranet.svg" alt="GuajiraNet Telecomunicaciones" />
+          <span class="nombre"><mat-icon>router</mat-icon> Migrador de ONUs</span>
         </a>
         <mat-nav-list>
           @for (enlace of enlacesVisibles(); track enlace.ruta) {
@@ -125,11 +122,13 @@ interface EnlaceMenu {
     .banner-ejemplo mat-icon { font-size: 18px; width: 18px; height: 18px; flex: none; }
     .banner-ejemplo span { color: var(--mat-sys-on-surface); }
     .contenedor { flex: 1; }
-    .menu-lateral { width: 256px; border-right: 1px solid var(--mat-sys-outline-variant); background: var(--mat-sys-surface-container-low); }
-    .marca { display: flex; gap: 12px; align-items: center; padding: 18px 16px 14px; text-decoration: none; color: inherit; }
-    .logo { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; background: var(--mat-sys-primary); color: var(--mat-sys-on-primary); }
-    .marca .nombre { display: block; font-weight: 600; font-size: 15px; }
-    .marca .detalle { display: block; font-size: 12px; color: var(--mat-sys-on-surface-variant); }
+    .menu-lateral { border-radius: 0; --mat-sidenav-container-shape: 0; width: 256px; border-right: 1px solid var(--mat-sys-outline-variant); background: var(--mat-sys-surface-container-low); }
+    .marca { display: flex; flex-direction: column; gap: 10px; align-items: stretch; padding: 16px 14px 14px; text-decoration: none;
+      background: var(--fondo-marca); background-attachment: fixed; color: #fff; margin-bottom: 4px; }
+    /* Sobre el azul noche: "net" y TELECOMUNICACIONES en blanco (la versión oscura del SVG). */
+    .logo-guajiranet { width: 100%; height: auto; display: block; box-sizing: border-box; padding: 4px 2px; color-scheme: dark; }
+    .marca .nombre { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; font-size: 14px; color: #fff; }
+    .marca .nombre mat-icon { font-size: 18px; width: 18px; height: 18px; }
     .contador-fallidas { background: var(--color-error); color: light-dark(#fff, #410002); border-radius: 999px; padding: 0 8px; font-size: 12px; font-weight: 600; line-height: 20px; }
     .barra { position: sticky; top: 0; z-index: 3; background: var(--mat-sys-surface); border-bottom: 1px solid var(--mat-sys-outline-variant); gap: 8px; height: 56px; }
     .espacio { flex: 1; }

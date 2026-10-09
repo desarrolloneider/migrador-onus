@@ -84,3 +84,11 @@ INSERT INTO parametros (clave, valor, descripcion) VALUES
     ('onus_por_guardado', '10', 'Cada cuántas ONUs cambiadas se guarda la configuración de la OLT')
 ON CONFLICT (clave) DO NOTHING;
 --rollback DELETE FROM parametros WHERE clave IN ('olts_en_paralelo', 'onus_por_guardado');
+
+--changeset migrador:configuracion-007-todas-las-tarjetas
+--comment: Todas las tarjetas con ONUs de cada OLT Huawei, según SmartOLT el 9 de octubre (pedido del usuario). La ZTE queda sin tarjetas: no tiene procedimiento.
+UPDATE olts SET tarjetas_permitidas = '["0/0", "0/1"]'::jsonb, actualizado_en = now() WHERE codigo IN ('OLT_ALBANIA', 'OLT_NEIVA', 'OLT_SAN_JUAN_2', 'OLT-CONEJO');
+UPDATE olts SET tarjetas_permitidas = '["0/0"]'::jsonb, actualizado_en = now() WHERE codigo = 'OLT_VILLAREINA';
+UPDATE olts SET tarjetas_permitidas = '["0/1", "0/2", "0/3", "0/4", "0/5"]'::jsonb, actualizado_en = now() WHERE codigo = 'OLT_FONSECA';
+UPDATE olts SET tarjetas_permitidas = '["0/0", "0/1", "0/2", "0/3", "0/4", "0/5"]'::jsonb, actualizado_en = now() WHERE codigo = 'OLT_SAN_JUAN';
+--rollback UPDATE olts SET tarjetas_permitidas = '[]'::jsonb WHERE codigo IN ('OLT_NEIVA', 'OLT_SAN_JUAN_2', 'OLT_VILLAREINA', 'OLT_SAN_JUAN');

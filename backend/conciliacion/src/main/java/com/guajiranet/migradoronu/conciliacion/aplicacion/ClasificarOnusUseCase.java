@@ -78,7 +78,12 @@ public class ClasificarOnusUseCase implements ClassifyOnusPort {
 
     @Override
     public List<Classification> classify(ClassifyOnusCommand command) {
-        List<OnuCandidate> onus = smartOlt.listOnus(command.marca(), command.oltCodigo(), command.tarjeta(), command.pon());
+        // Con ONUs escogidas una por una se traen todas las marcas, para que las de otra marca no desaparezcan sin aviso:
+        // quedan fuera con su motivo. Sin selección, la marca filtra como siempre.
+        List<OnuCandidate> onus = smartOlt.listOnus(command.sns() != null ? null : command.marca(), command.oltCodigo(),
+                command.tarjeta(), command.pon());
+        marcaDelLote.set(command.sns() != null && command.marca() != null && !command.marca().isBlank()
+                && !command.marca().equalsIgnoreCase("TODAS") ? command.marca() : null);
         if (command.sns() != null) {
             // Solo las escogidas en la pantalla, comparadas en el formato común del SN.
             Set<String> escogidas = command.sns().stream().map(sn -> FormatoSn.normalizar(sn).orElse(sn.strip().toUpperCase(Locale.ROOT)))
@@ -91,8 +96,12 @@ public class ClasificarOnusUseCase implements ClassifyOnusPort {
             return clasificar(onus, porIp(wispro.listAll()));
         } finally {
             origenes.remove();
+            marcaDelLote.remove();
         }
     }
+
+    /** La marca escogida cuando además se escogieron ONUs una por una; null si no hay que comparar. */
+    private final ThreadLocal<String> marcaDelLote = new ThreadLocal<>();
 
     /** Los perfiles de origen de la clasificación en curso; null: el configurado. */
     private final ThreadLocal<List<String>> origenes = new ThreadLocal<>();
@@ -183,6 +192,12 @@ public class ClasificarOnusUseCase implements ClassifyOnusPort {
                 && (onu.marca() == null || !marcasConProcedimiento.contains(onu.marca().toUpperCase(Locale.ROOT)))) {
             return Classification.excluded(sn, ExclusionReason.EXC_MARCA_SIN_PROCEDIMIENTO,
                     "ONU %s es %s; esa marca todavía no tiene procedimiento.".formatted(sn, onu.marca() == null ? "de marca desconocida" : onu.marca()),
+                    onu, null, duplicados);
+        }
+        String marca = marcaDelLote.get();
+        if (marca != null && !marca.equalsIgnoreCase(onu.marca())) {
+            return Classification.excluded(sn, ExclusionReason.EXC_MARCA_SIN_PROCEDIMIENTO,
+                    "ONU %s es %s; este lote es solo de %s.".formatted(sn, onu.marca() == null ? "de marca desconocida" : onu.marca(), marca),
                     onu, null, duplicados);
         }
         // El perfil real lo dice la OLT. Si la OLT tiene consola y no se pudo leer, no se adivina.

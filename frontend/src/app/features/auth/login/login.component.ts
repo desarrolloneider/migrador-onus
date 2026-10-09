@@ -21,10 +21,10 @@ import { AuthService } from '../../../core/auth/auth.service';
     <div class="fondo">
       <section class="panel">
         <header class="marca">
-          <span class="logo"><mat-icon>router</mat-icon></span>
+          <img class="logo-guajiranet" src="marca/guajiranet.svg" alt="GuajiraNet Telecomunicaciones" />
           <div>
             <h1>Migrador de ONUs</h1>
-            <p>GuajiraNet · perfil TR-069 a GUAJIRANET1</p>
+            <p>Perfil TR-069 a GUAJIRANET1</p>
           </div>
         </header>
 
@@ -75,12 +75,13 @@ import { AuthService } from '../../../core/auth/auth.service';
   `,
   styles: `
     .fondo { min-height: 100%; display: grid; place-items: center; padding: 24px 16px;
-      background: radial-gradient(circle at 20% 10%, color-mix(in srgb, var(--mat-sys-primary) 14%, transparent), transparent 55%), var(--mat-sys-surface); }
+      background: radial-gradient(circle at 85% 15%, rgb(34 180 220 / .25), transparent 45%), var(--fondo-marca); }
     .panel { width: min(420px, 100%); background: var(--mat-sys-surface-container-low); border: 1px solid var(--mat-sys-outline-variant);
       border-radius: 24px; padding: 32px 28px 24px; box-shadow: 0 10px 40px rgb(0 0 0 / .08); }
-    .marca { display: flex; gap: 14px; align-items: center; margin-bottom: 24px; }
-    .logo { width: 48px; height: 48px; border-radius: 14px; display: grid; place-items: center; background: var(--mat-sys-primary); color: var(--mat-sys-on-primary); }
-    h1 { font: var(--mat-sys-title-large); margin: 0; }
+    .panel { border-top: 4px solid var(--color-marca); }
+    .marca { display: flex; flex-direction: column; gap: 14px; align-items: center; text-align: center; margin-bottom: 24px; }
+    .logo-guajiranet { width: min(280px, 90%); height: auto; display: block; }
+    h1 { font: var(--mat-sys-title-large); margin: 0; color: var(--mat-sys-primary); }
     .marca p { margin: 2px 0 0; color: var(--mat-sys-on-surface-variant); font-size: 13px; }
     form { display: flex; flex-direction: column; gap: 12px; }
     .entrar { height: 44px; margin-top: 4px; }

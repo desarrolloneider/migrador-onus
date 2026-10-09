@@ -71,7 +71,7 @@ import { GrupoVistaPrevia, ItemVistaPrevia, VistaPrevia } from '../../models/lot
         }
 
         <div class="controles">
-          <mat-button-toggle-group [value]="grupo()" (change)="grupo.set($event.value)" aria-label="Grupo de la vista previa" class="grupos">
+          <mat-button-toggle-group [value]="grupo()" (change)="grupo.set($event.value); pagina.set(0)" aria-label="Grupo de la vista previa" class="grupos">
             @for (g of ordenGrupos; track g) {
               <mat-button-toggle [value]="g">
                 <mat-icon>{{ grupos[g].icono }}</mat-icon> {{ grupos[g].etiqueta }} <span class="cuenta tono-{{ grupos[g].tono }}">{{ conteo(g) }}</span>
@@ -82,7 +82,7 @@ import { GrupoVistaPrevia, ItemVistaPrevia, VistaPrevia } from '../../models/lot
           <mat-form-field class="buscar">
             <mat-label>Buscar</mat-label>
             <mat-icon matPrefix>search</mat-icon>
-            <input matInput [ngModel]="busqueda()" (ngModelChange)="busqueda.set($event)" placeholder="SN, IP, cliente o motivo" />
+            <input matInput [ngModel]="busqueda()" (ngModelChange)="busqueda.set($event); pagina.set(0)" placeholder="SN, IP, cliente o motivo" />
           </mat-form-field>
           <button mat-stroked-button (click)="exportar()" [disabled]="exportando()"><mat-icon>download</mat-icon> Exportar</button>
         </div>
@@ -97,7 +97,7 @@ import { GrupoVistaPrevia, ItemVistaPrevia, VistaPrevia } from '../../models/lot
               }
             </thead>
             <tbody>
-              @for (item of filas(); track item.sn) {
+              @for (item of filasDePagina(); track item.sn) {
                 <tr>
                   <td class="mono">
                     {{ item.sn }}
@@ -147,6 +147,16 @@ import { GrupoVistaPrevia, ItemVistaPrevia, VistaPrevia } from '../../models/lot
             </tbody>
           </table>
         </div>
+        @if (totalPaginas() > 1) {
+          <div class="paginacion">
+            <span>{{ paginaActual() * porPagina + 1 }}–{{ Math.min((paginaActual() + 1) * porPagina, filas().length) }} de {{ filas().length }}</span>
+            <button mat-icon-button (click)="pagina.set(0)" [disabled]="paginaActual() === 0" aria-label="Primera página"><mat-icon>first_page</mat-icon></button>
+            <button mat-icon-button (click)="pagina.set(paginaActual() - 1)" [disabled]="paginaActual() === 0" aria-label="Página anterior"><mat-icon>chevron_left</mat-icon></button>
+            <span>Página {{ paginaActual() + 1 }} de {{ totalPaginas() }}</span>
+            <button mat-icon-button (click)="pagina.set(paginaActual() + 1)" [disabled]="paginaActual() >= totalPaginas() - 1" aria-label="Página siguiente"><mat-icon>chevron_right</mat-icon></button>
+            <button mat-icon-button (click)="pagina.set(totalPaginas() - 1)" [disabled]="paginaActual() >= totalPaginas() - 1" aria-label="Última página"><mat-icon>last_page</mat-icon></button>
+          </div>
+        }
 
         @if (v.lote.estado === 'VISTA_PREVIA') {
           <div class="barra-acciones">
@@ -165,6 +175,9 @@ import { GrupoVistaPrevia, ItemVistaPrevia, VistaPrevia } from '../../models/lot
     </div>
   `,
   styles: `
+    .paginacion { display: flex; align-items: center; justify-content: flex-end; gap: 4px; margin-top: 8px; flex-wrap: wrap;
+      color: var(--mat-sys-on-surface-variant); font-size: 13px; }
+    .paginacion > span:first-child { margin-right: auto; }
     .vigencia, .estimado { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px; font-size: 13px; font-weight: 500; }
     .vigencia { background: var(--fondo-tono); color: var(--color-tono); font-variant-numeric: tabular-nums; }
     .estimado { background: var(--mat-sys-surface-container-high); color: var(--mat-sys-on-surface-variant); }
@@ -224,6 +237,15 @@ export class VistaPreviaComponent implements OnInit {
       .filter((i) => !texto || [i.sn, i.ip, i.cliente, i.contrato, i.mensaje, i.codigoMotivo]
         .some((campo) => (campo ?? '').toLowerCase().includes(texto)));
   });
+
+  /** Paginación de la tabla: 25 ONUs por página en cada grupo. */
+  protected readonly porPagina = 25;
+  protected readonly Math = Math;
+  protected readonly pagina = signal(0);
+  protected readonly totalPaginas = computed(() => Math.max(1, Math.ceil(this.filas().length / this.porPagina)));
+  protected readonly paginaActual = computed(() => Math.min(this.pagina(), this.totalPaginas() - 1));
+  protected readonly filasDePagina = computed(() =>
+    this.filas().slice(this.paginaActual() * this.porPagina, (this.paginaActual() + 1) * this.porPagina));
 
   ngOnInit(): void {
     this.cargar();
