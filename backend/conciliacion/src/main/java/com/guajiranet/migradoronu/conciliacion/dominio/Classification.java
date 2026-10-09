@@ -30,8 +30,9 @@ public record Classification(String sn, ClassificationGroup group, ExclusionReas
         duplicates = duplicates == null ? List.of() : List.copyOf(duplicates);
     }
 
+    /** {@code subscriber} es null cuando no se exige contrato y la ONU no tiene uno único en Wispro. */
     public static Classification included(String sn, OnuCandidate onu, Subscriber subscriber, List<DuplicateRecord> duplicates) {
-        return new Classification(sn, ClassificationGroup.ENTRA, null, null, onu, Objects.requireNonNull(subscriber, "subscriber"), duplicates);
+        return new Classification(sn, ClassificationGroup.ENTRA, null, null, onu, subscriber, duplicates);
     }
 
     public static Classification alreadyHasProfile(String sn, OnuCandidate onu, Subscriber subscriber, List<DuplicateRecord> duplicates) {

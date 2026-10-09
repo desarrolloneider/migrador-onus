@@ -58,16 +58,27 @@ public class JdbcColaDeEjecucionAdapter implements ColaDeEjecucionPort {
     }
 
     @Override
-    public Optional<TrabajoOnu> tomarSiguiente(long procesoId) {
-        return transaccion.execute(estado -> {
+    public java.util.List<String> oltsConPendientes() {
+        return jdbc.sql("""
+                        SELECT i.olt_codigo FROM ejecuciones_onu e JOIN lotes l ON l.id = e.lote_id JOIN lote_items i ON i.id = e.lote_item_id
+                        WHERE e.estado = 'PENDIENTE' AND l.estado IN ('CONFIRMADO', 'EN_EJECUCION')
+                        GROUP BY i.olt_codigo
+                        ORDER BY min(l.confirmado_en), min(e.orden)
+                        """)
+                .query(String.class).list();
+    }
+
+    @Override
+    public Optional<TrabajoOnu> tomarSiguiente(long procesoId, String oltCodigo) {
+        return reintentando(() -> transaccion.execute(estado -> {
             Optional<Long> id = jdbc.sql("""
-                            SELECT e.id FROM ejecuciones_onu e JOIN lotes l ON l.id = e.lote_id
-                            WHERE e.estado = 'PENDIENTE' AND l.estado IN ('CONFIRMADO', 'EN_EJECUCION')
+                            SELECT e.id FROM ejecuciones_onu e JOIN lotes l ON l.id = e.lote_id JOIN lote_items i ON i.id = e.lote_item_id
+                            WHERE e.estado = 'PENDIENTE' AND l.estado IN ('CONFIRMADO', 'EN_EJECUCION') AND i.olt_codigo = ?
                             ORDER BY l.confirmado_en, e.orden
                             LIMIT 1
                             FOR UPDATE OF e SKIP LOCKED
                             """)
-                    .query(Long.class).optional();
+                    .param(oltCodigo).query(Long.class).optional();
             if (id.isEmpty()) {
                 return Optional.<TrabajoOnu>empty();
             }
@@ -94,12 +105,34 @@ public class JdbcColaDeEjecucionAdapter implements ColaDeEjecucionPort {
                     .param(trabajo.loteId()).update();
             jdbc.sql(CONTADORES).param(trabajo.loteId()).update();
             return Optional.of(trabajo);
-        });
+        }));
+    }
+
+    /**
+     * Varias OLT terminan ONUs del mismo lote a la vez y todas recalculan sus contadores: si la base corta una
+     * transacción por bloqueo cruzado, se repite. Nunca se marca como fallida una ONU por esto.
+     */
+    private static <T> T reintentando(java.util.function.Supplier<T> operacion) {
+        for (int intento = 1; ; intento++) {
+            try {
+                return operacion.get();
+            } catch (org.springframework.dao.PessimisticLockingFailureException e) {
+                if (intento >= 5) {
+                    throw e;
+                }
+                try {
+                    Thread.sleep(100L * intento);
+                } catch (InterruptedException i) {
+                    Thread.currentThread().interrupt();
+                    throw e;
+                }
+            }
+        }
     }
 
     @Override
     public void terminar(long ejecucionId, String estado, String paso, String codigoFallo, String mensaje) {
-        transaccion.executeWithoutResult(s -> {
+        reintentando(() -> transaccion.execute(s -> {
             long loteId = jdbc.sql("SELECT lote_id FROM ejecuciones_onu WHERE id = ?").param(ejecucionId).query(Long.class).single();
             jdbc.sql("""
                             UPDATE ejecuciones_onu SET estado = ?, paso_actual = ?, codigo_fallo = ?, mensaje_fallo = ?, terminada_en = now()
@@ -112,7 +145,8 @@ public class JdbcColaDeEjecucionAdapter implements ColaDeEjecucionPort {
             jdbc.sql(CERRAR_SI_TERMINO).param(loteId).update();
             // Si la ONU quedó con el perfil nuevo en un lote real, sus fallas anteriores quedan resueltas.
             jdbc.sql(RESOLVER_FALLIDAS_ANTERIORES).params(ejecucionId).update();
-        });
+            return null;
+        }));
     }
 
     /**

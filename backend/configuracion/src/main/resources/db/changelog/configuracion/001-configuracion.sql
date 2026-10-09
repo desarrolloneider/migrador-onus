@@ -70,3 +70,17 @@ ON CONFLICT (codigo) DO NOTHING;
 --comment: La huella de la llave SSH de cada OLT, fijada desde Configuración tras probar la conexión. No es secreta. Si el .env trae CONSOLA_<CODIGO>_HUELLA, manda la del .env.
 ALTER TABLE olts ADD COLUMN huella_ssh VARCHAR(200);
 --rollback ALTER TABLE olts DROP COLUMN huella_ssh;
+
+--changeset migrador:configuracion-005-lotes-de-mil
+--comment: Lotes de hasta 1000 ONUs (pedido del 9 de octubre). Medido: 24 s por ONU en promedio, 41 s el percentil 90.
+UPDATE parametros SET valor = '1000', actualizado_en = now() WHERE clave = 'tamano_maximo_lote';
+UPDATE parametros SET valor = '1', actualizado_en = now() WHERE clave = 'tiempo_estimado_por_onu_minutos';
+--rollback UPDATE parametros SET valor = '200' WHERE clave = 'tamano_maximo_lote';
+
+--changeset migrador:configuracion-006-paralelo-y-guardado
+--comment: Varias OLT a la vez (una sesión por OLT) y un save cada N ONUs (pedido del 9 de octubre).
+INSERT INTO parametros (clave, valor, descripcion) VALUES
+    ('olts_en_paralelo',  '6',  'OLT trabajando al mismo tiempo, una sesión por OLT'),
+    ('onus_por_guardado', '10', 'Cada cuántas ONUs cambiadas se guarda la configuración de la OLT')
+ON CONFLICT (clave) DO NOTHING;
+--rollback DELETE FROM parametros WHERE clave IN ('olts_en_paralelo', 'onus_por_guardado');

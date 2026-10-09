@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, computed, inject, input, signal } from '@angular/core';
+﻿import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, computed, inject, input, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatButtonModule } from '@angular/material/button';
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
@@ -507,7 +507,7 @@ export class EjecucionLoteComponent implements OnInit {
         return revisar.length ? forkJoin(revisar) : of([]);
       }),
       switchMap(() => this.lotesService.armarVistaPrevia({
-        marca: 'HUAWEI', olt: olts.length === 1 ? olts[0] : null, tarjeta: null, pon: null,
+        marca: 'TODAS', olt: olts.length === 1 ? olts[0] : null, tarjeta: null, pon: null,
         perfiles: ['GUAJIRANET', 'SIN_PERFIL'], sns: fallidas.map((f) => f.sn),
       })),
       switchMap((vista) => {

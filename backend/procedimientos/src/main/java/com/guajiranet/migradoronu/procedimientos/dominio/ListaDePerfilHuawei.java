@@ -23,6 +23,7 @@ import java.util.regex.Pattern;
 public record ListaDePerfilHuawei(Map<String, SortedSet<Integer>> ontsPorPuerto) {
 
     private static final Pattern FILA = Pattern.compile("^\\s*(\\d+)\\s*/\\s*(\\d+)\\s*/\\s*(\\d+)\\s+([\\d,\\-\\s]+?)\\s*$");
+    private static final Pattern CONTINUACION = Pattern.compile("^\\s+\\d[\\d,\\-\\s]*$");
     private static final Pattern RANGO = Pattern.compile("(\\d+)(?:-(\\d+))?");
     private static final Pattern IGNORABLE = Pattern.compile("^\\s*(-+|F/S/P\\s+ONT List.*|)\\s*$");
 
@@ -41,18 +42,35 @@ public record ListaDePerfilHuawei(Map<String, SortedSet<Integer>> ontsPorPuerto)
             return Optional.empty();
         }
         texto = RespuestaHuawei.sinAvisos(texto);
-        Map<String, SortedSet<Integer>> resultado = new LinkedHashMap<>();
+        // Con muchas ONUs la OLT parte la lista: la fila termina en coma y sigue en la línea de abajo, solo con números.
+        Map<String, StringBuilder> listas = new LinkedHashMap<>();
+        StringBuilder anterior = null;
         for (String linea : texto.split("\\R")) {
             if (IGNORABLE.matcher(linea).matches()) {
                 continue;
             }
             Matcher fila = FILA.matcher(linea);
-            if (!fila.matches()) {
+            if (fila.matches()) {
+                String puerto = fila.group(1) + "/" + fila.group(2) + "/" + fila.group(3);
+                anterior = listas.computeIfAbsent(puerto, k -> new StringBuilder());
+                if (!anterior.isEmpty()) {
+                    anterior.append(',');
+                }
+                anterior.append(fila.group(4).replace(" ", ""));
+            } else if (anterior != null && anterior.toString().endsWith(",") && CONTINUACION.matcher(linea).matches()) {
+                anterior.append(linea.replace(" ", ""));
+            } else {
                 return Optional.empty();
             }
-            String puerto = fila.group(1) + "/" + fila.group(2) + "/" + fila.group(3);
-            SortedSet<Integer> onts = resultado.computeIfAbsent(puerto, k -> new TreeSet<>());
-            for (String parte : fila.group(4).replace(" ", "").split(",")) {
+        }
+        Map<String, SortedSet<Integer>> resultado = new LinkedHashMap<>();
+        for (Map.Entry<String, StringBuilder> lista : listas.entrySet()) {
+            SortedSet<Integer> onts = resultado.computeIfAbsent(lista.getKey(), k -> new TreeSet<>());
+            String valores = lista.getValue().toString();
+            if (valores.endsWith(",")) {
+                return Optional.empty();
+            }
+            for (String parte : valores.split(",")) {
                 Matcher r = RANGO.matcher(parte);
                 if (!r.matches()) {
                     return Optional.empty();

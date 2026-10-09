@@ -39,6 +39,7 @@ public class ClasificarOnusUseCase implements ClassifyOnusPort {
     private final OnuParticipationQueryPort participacion;
     private final Supplier<String> perfilDestino;
     private final Set<String> marcasConProcedimiento;
+    private final boolean exigirContrato;
     private final OltProfilesQueryPort perfilesOlt;
     private final Supplier<String> perfilOrigen;
 
@@ -55,6 +56,15 @@ public class ClasificarOnusUseCase implements ClassifyOnusPort {
     public ClasificarOnusUseCase(OnuInventoryPort smartOlt, SubscriberDirectoryPort wispro, OltSettingsQueryPort olts,
                                  OnuParticipationQueryPort participacion, Supplier<String> perfilDestino,
                                  Set<String> marcasConProcedimiento, OltProfilesQueryPort perfilesOlt, Supplier<String> perfilOrigen) {
+        this(smartOlt, wispro, olts, participacion, perfilDestino, marcasConProcedimiento, perfilesOlt, perfilOrigen, true);
+    }
+
+    /** @param exigirContrato si es false, las ONUs en línea sin IP o sin un único contrato en Wispro también entran */
+    public ClasificarOnusUseCase(OnuInventoryPort smartOlt, SubscriberDirectoryPort wispro, OltSettingsQueryPort olts,
+                                 OnuParticipationQueryPort participacion, Supplier<String> perfilDestino,
+                                 Set<String> marcasConProcedimiento, OltProfilesQueryPort perfilesOlt, Supplier<String> perfilOrigen,
+                                 boolean exigirContrato) {
+        this.exigirContrato = exigirContrato;
         // Null: no se consulta la OLT y el perfil es el que traiga SmartOLT.
         this.perfilesOlt = perfilesOlt;
         this.perfilOrigen = Objects.requireNonNull(perfilOrigen, "perfilOrigen");
@@ -168,7 +178,9 @@ public class ClasificarOnusUseCase implements ClassifyOnusPort {
         }
         OnuPosition pos = onu.position();
         // K3
-        if (onu.marca() == null || !marcasConProcedimiento.contains(onu.marca().toUpperCase(Locale.ROOT))) {
+        // "*": cualquier marca de ONU. El comando lo ejecuta la OLT, así que lo que manda es que la OLT tenga consola.
+        if (!marcasConProcedimiento.contains("*")
+                && (onu.marca() == null || !marcasConProcedimiento.contains(onu.marca().toUpperCase(Locale.ROOT)))) {
             return Classification.excluded(sn, ExclusionReason.EXC_MARCA_SIN_PROCEDIMIENTO,
                     "ONU %s es %s; esa marca todavía no tiene procedimiento.".formatted(sn, onu.marca() == null ? "de marca desconocida" : onu.marca()),
                     onu, null, duplicados);
@@ -202,6 +214,11 @@ public class ClasificarOnusUseCase implements ClassifyOnusPort {
             return Classification.excluded(sn, ExclusionReason.EXC_FUERA_DE_LINEA,
                     "ONU %s está fuera de línea en SmartOLT.".formatted(sn), onu, null, duplicados);
         }
+        // Sin exigir contrato: el cambio lo hace la OLT por posición y SN, así que una ONU en línea sin IP o sin contrato
+        // único en Wispro también entra. El contrato solo se muestra cuando hay exactamente uno.
+        if (!exigirContrato) {
+            return validarOltYLotes(sn, onu, pos, contrato, duplicados);
+        }
         // K5
         if (onu.ip() == null || onu.ip().isBlank()) {
             return Classification.excluded(sn, ExclusionReason.EXC_SIN_IP_SMARTOLT,
@@ -220,6 +237,11 @@ public class ClasificarOnusUseCase implements ClassifyOnusPort {
                             .formatted(sn, onu.ip(), contratos.size(), contratos.stream().map(Subscriber::contrato).collect(Collectors.joining(", "))),
                     onu, null, duplicados);
         }
+        return validarOltYLotes(sn, onu, pos, contrato, duplicados);
+    }
+
+    private Classification validarOltYLotes(String sn, OnuCandidate onu, OnuPosition pos, Subscriber contrato,
+                                            List<DuplicateRecord> duplicados) {
         // K8
         if (!olts.consoleAccessConfigured(pos.oltCodigo())) {
             return Classification.excluded(sn, ExclusionReason.EXC_OLT_SIN_ACCESO_CONFIGURADO,

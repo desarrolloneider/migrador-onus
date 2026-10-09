@@ -53,8 +53,8 @@ import { OnusDeOlt } from '../../models/lote.model';
           <mat-form-field class="ancho-completo">
             <mat-label>Marca</mat-label>
             <mat-select formControlName="marca">
-              <mat-option value="HUAWEI">Huawei</mat-option>
-              <mat-option value="OTRAS" disabled>Otras marcas (todavía sin procedimiento)</mat-option>
+              <mat-option value="TODAS">Todas las marcas</mat-option>
+              @for (m of marcas; track m.valor) { <mat-option [value]="m.valor">{{ m.nombre }}</mat-option> }
             </mat-select>
             <mat-hint>En la fase 1 solo Huawei; todos los modelos usan los mismos parámetros.</mat-hint>
           </mat-form-field>
@@ -269,8 +269,13 @@ export class NuevoLoteComponent {
   private readonly destroyRef = inject(DestroyRef);
   protected readonly maximo = 50;
 
+  /** Marcas de ONU vistas en SmartOLT. El cambio lo hace la OLT Huawei, así que todas pueden entrar. */
+  protected readonly marcas = [
+    { valor: 'Huawei', nombre: 'Huawei' }, { valor: 'ZTE', nombre: 'ZTE' }, { valor: 'Optictimes', nombre: 'Optictimes' },
+    { valor: 'FiberHome', nombre: 'FiberHome' }, { valor: 'TP-Link', nombre: 'TP-Link' }, { valor: 'Genérica GPON', nombre: 'Genérica GPON' },
+  ];
   protected readonly formulario = inject(FormBuilder).group({
-    marca: ['HUAWEI', Validators.required],
+    marca: ['TODAS', Validators.required],
     olt: [null as string | null],
     tarjeta: [{ value: null as string | null, disabled: true }],
     pon: [{ value: null as number | null, disabled: true }, Validators.min(0)],
@@ -435,7 +440,7 @@ export class NuevoLoteComponent {
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((evento) => this.avance.update((lista) => [...lista, String(evento.datos['mensaje'] ?? '')]));
     this.lotesService.armarVistaPrevia({
-      marca: valores.marca ?? 'HUAWEI',
+      marca: valores.marca ?? 'TODAS',
       olt: valores.olt ?? null,
       tarjeta: valores.tarjeta ?? null,
       pon: valores.pon === null || valores.pon === undefined || String(valores.pon) === '' ? null : Number(valores.pon),

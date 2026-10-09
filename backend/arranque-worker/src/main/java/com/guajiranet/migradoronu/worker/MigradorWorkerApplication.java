@@ -44,7 +44,8 @@ public class MigradorWorkerApplication {
 
     @Bean
     EjecutorDeOnus ejecutorDeOnus(ColaDeEjecucionPort cola, OltConsoleFactoryPort consolas, CambioDePerfilUnaOnu cambio,
-                                  @Value("${migrador.perfil-origen:GUAJIRANET}") String perfilOrigen) {
-        return new EjecutorDeOnus(cola, consolas, cambio, perfilOrigen);
+                                  @Value("${migrador.perfil-origen:GUAJIRANET}") String perfilOrigen,
+                                  com.guajiranet.migradoronu.comun.puertos.AuditTrailPort auditoria) {
+        return new EjecutorDeOnus(cola, consolas, cambio, perfilOrigen, auditoria);
     }
 }

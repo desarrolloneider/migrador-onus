@@ -48,9 +48,11 @@ public class ConciliacionConfig {
     @Bean
     ClassifyOnusPort classifyOnus(SmartOltInventoryAdapter smartOltInventario, WisproDirectoryAdapter wisproDirectorio, OltProfilesQueryPort perfilesOlt,
                                   @Value("${migrador.perfil-origen:GUAJIRANET}") String perfilOrigen,
+                                  @Value("${migrador.marcas-onu:*}") String marcas,
+                                  @Value("${MIGRADOR_EXIGIR_CONTRATO_WISPRO:false}") boolean exigirContrato,
                                   OltSettingsQueryPort olts, OnuParticipationQueryPort participacion, TargetProfilePort perfil) {
         return new ClasificarOnusUseCase(smartOltInventario, wisproDirectorio,
-                olts, participacion, perfil::perfilDestino, Set.of("Huawei"), perfilesOlt, () -> perfilOrigen);
+                olts, participacion, perfil::perfilDestino, Set.of(marcas.split("\\s*,\\s*")), perfilesOlt, () -> perfilOrigen, exigirContrato);
     }
 
     private static <T> Supplier<T> unaVez(Supplier<T> fabrica) {

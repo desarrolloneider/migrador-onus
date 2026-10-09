@@ -116,7 +116,7 @@ class EsquemaBaseDatosTest {
         assertThat(jdbc.queryForObject("SELECT valor #>> '{}' FROM parametros WHERE clave = 'perfil_tr069'", String.class))
                 .isEqualTo("guajiranet1");
         assertThat(jdbc.queryForObject("SELECT valor::int FROM parametros WHERE clave = 'tamano_maximo_lote'", Integer.class))
-                .isEqualTo(50);
+                .isEqualTo(1000);
     }
 
     private long insertUser(String usuario) {

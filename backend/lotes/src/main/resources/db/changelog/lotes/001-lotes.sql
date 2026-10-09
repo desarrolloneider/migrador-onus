@@ -74,3 +74,9 @@ CREATE TABLE lote_items (
 
 CREATE INDEX ix_lote_items_sn ON lote_items (sn);
 --rollback DROP TABLE lote_items;
+
+--changeset migrador:lotes-010-entra-sin-ip
+--comment: Una ONU en línea sin IP o sin contrato en Wispro también puede entrar (pedido del 9 de octubre): la OLT la cambia por posición y SN.
+ALTER TABLE lote_items DROP CONSTRAINT ck_lote_items_entra;
+ALTER TABLE lote_items ADD CONSTRAINT ck_lote_items_entra CHECK (grupo <> 'ENTRA' OR (olt_id IS NOT NULL AND tarjeta IS NOT NULL AND pon IS NOT NULL AND onu_id IS NOT NULL));
+--rollback ALTER TABLE lote_items DROP CONSTRAINT ck_lote_items_entra;

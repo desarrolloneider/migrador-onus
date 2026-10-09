@@ -13,7 +13,11 @@ public interface ColaDeEjecucionPort {
     /** Antes de tomar: las pendientes de un lote que se está deteniendo pasan a NO_INICIADA y el lote se cierra. */
     void atenderDetenciones();
 
-    Optional<TrabajoOnu> tomarSiguiente(long procesoId);
+    /** La siguiente ONU pendiente de esa OLT. Cada OLT la atiende un solo hilo (RN-34). */
+    Optional<TrabajoOnu> tomarSiguiente(long procesoId, String oltCodigo);
+
+    /** Las OLT que tienen ONUs pendientes en lotes que se pueden ejecutar, la más antigua primero. */
+    java.util.List<String> oltsConPendientes();
 
     /**
      * Cierra la ejecución, recalcula los contadores del lote y, si ya no le quedan ONUs, lo cierra.

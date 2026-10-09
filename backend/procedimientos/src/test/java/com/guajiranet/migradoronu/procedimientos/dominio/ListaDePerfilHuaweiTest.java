@@ -50,6 +50,29 @@ class ListaDePerfilHuaweiTest {
     }
 
     @Test
+    void unaListaLargaSigueEnLaLineaDeAbajo() {
+        ListaDePerfilHuawei lista = ListaDePerfilHuawei.leer("""
+                ------------------------------------------------------------------------------
+                  F/S/P       ONT List
+                  ------------------------------------------------------------------------------
+                  0/ 0/10     5,8-11
+                  0/ 0/11     2-4,6,60-62,
+                              64-66,68,70-71,73
+                  0/ 0/12     17
+                  ------------------------------------------------------------------------------
+                """).orElseThrow();
+        assertThat(lista.contiene("0/0", 11, 62)).isTrue();
+        assertThat(lista.contiene("0/0", 11, 73)).isTrue();
+        assertThat(lista.contiene("0/0", 11, 63)).isFalse();
+        assertThat(lista.total()).isEqualTo(5 + 14 + 1);
+    }
+
+    @Test
+    void unaLineaCortadaSinContinuacionNoSeAdivina() {
+        assertThat(ListaDePerfilHuawei.leer("  0/ 0/11     2-4,6,\n  0/ 0/12     17")).isEmpty();
+    }
+
+    @Test
     void unPerfilSinOnusEsUnaListaVacia() {
         assertThat(ListaDePerfilHuawei.leer("  Failure: The profile is not bound").orElseThrow().total()).isZero();
     }

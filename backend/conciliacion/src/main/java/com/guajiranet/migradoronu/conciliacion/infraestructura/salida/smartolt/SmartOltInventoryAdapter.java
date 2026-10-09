@@ -63,7 +63,8 @@ public class SmartOltInventoryAdapter implements OnuInventoryPort {
             }
         }
         List<OnuCandidate> onus = filtros.isEmpty() ? inventarioCompleto() : convertir(cliente.get().onus(filtros));
-        return onus.stream().filter(o -> marca == null || marca.equalsIgnoreCase(o.marca())).toList();
+        boolean todas = marca == null || marca.isBlank() || marca.equalsIgnoreCase("TODAS");
+        return onus.stream().filter(o -> todas || marca.equalsIgnoreCase(o.marca())).toList();
     }
 
     @Override
@@ -143,19 +144,27 @@ public class SmartOltInventoryAdapter implements OnuInventoryPort {
         return ips.size() == 1 ? ips.getFirst() : null;
     }
 
+    /** Código de fabricante de los 4 primeros caracteres del SN → nombre de la marca. Los que no están, se muestran tal cual. */
+    static final Map<String, String> FABRICANTES = Map.of(
+            "HWTC", "Huawei", "ZTEG", "ZTE", "FHTT", "FiberHome", "TPLG", "TP-Link", "OPTI", "Optictimes",
+            "RUIJ", "Ruijie", "HNET", "Hikvision", "GPON", "Genérica GPON");
+
     /** La marca sale del fabricante que traen los 4 primeros caracteres del SN (HWTC = Huawei) si SmartOLT no la da. */
     static String marcaDe(String sn, String vendor) {
         if (vendor != null) {
             return vendor.toUpperCase(Locale.ROOT).startsWith("HUAWEI") || vendor.equalsIgnoreCase("HWTC") ? "Huawei" : vendor;
         }
         String prefijo = sn.strip().toUpperCase(Locale.ROOT);
-        if (prefijo.startsWith("HWTC") || prefijo.startsWith("48575443")) {
-            return "Huawei";
+        if (prefijo.matches("[0-9A-F]{16}")) {
+            String ascii = new String(java.util.HexFormat.of().parseHex(prefijo.substring(0, 8)), java.nio.charset.StandardCharsets.US_ASCII);
+            if (ascii.matches("[A-Z]{4}")) {
+                prefijo = ascii;
+            }
         }
-        if (prefijo.startsWith("ZTEG") || prefijo.startsWith("5A544547")) {
-            return "ZTE";
+        if (prefijo.length() < 4) {
+            return "Desconocida";
         }
-        return prefijo.length() >= 4 && Character.isLetter(prefijo.charAt(0)) ? prefijo.substring(0, 4) : "Desconocida";
+        return FABRICANTES.getOrDefault(prefijo.substring(0, 4), prefijo.substring(0, 4));
     }
 
     private synchronized Map<String, String> olts() {
