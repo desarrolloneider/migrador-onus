@@ -66,7 +66,35 @@ public class MigradorWebApplication {
         if (args.length > 1 && args[0].equals("consola-prueba")) {
             System.exit(pruebaDeConsola(args[1], args.length > 3 ? args[2] : null, args.length > 3 ? Integer.valueOf(args[3]) : null));
         }
+        if (args.length > 1 && args[0].equals("perfiles-crudo")) {
+            System.exit(perfilesCrudo(args[1]));
+        }
         new SpringApplicationBuilder(MigradorWebApplication.class).run(args);
+    }
+
+    /** Solo lectura: imprime tal cual la tabla de perfiles TR-069 y el bound-info de cada uno (solo puertos y números). */
+    private static int perfilesCrudo(String codigo) {
+        try (ConfigurableApplicationContext contexto = contextoDeConsola();
+             var consola = contexto.getBean(com.guajiranet.migradoronu.ejecucion.puertos.salida.OltConsoleFactoryPort.class).abrir(codigo)) {
+            consola.ejecutar("enable");
+            String tabla = consola.ejecutar("display ont tr069-server-profile all");
+            System.out.println("=== display ont tr069-server-profile all\n" + visible(tabla));
+            var t = com.guajiranet.migradoronu.procedimientos.dominio.TablaDePerfilesHuawei.leer(tabla);
+            if (t.isEmpty()) {
+                return 1;
+            }
+            for (var e : t.get().idPorNombre().entrySet()) {
+                String texto = consola.ejecutar("display ont tr069-server-profile bound-info profile-id " + e.getValue());
+                System.out.println("=== bound-info " + e.getKey() + " (" + e.getValue() + ") leible="
+                        + com.guajiranet.migradoronu.procedimientos.dominio.ListaDePerfilHuawei.leer(texto).isPresent());
+                System.out.println(visible(texto));
+            }
+            return 0;
+        }
+    }
+
+    private static String visible(String texto) {
+        return texto.replace("\b", "<BS>").replace("\r", "<CR>").replace("\u001b", "<ESC>");
     }
 
     private static int diagnostico() {

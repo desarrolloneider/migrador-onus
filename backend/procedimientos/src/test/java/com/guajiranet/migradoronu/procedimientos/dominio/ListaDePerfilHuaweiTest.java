@@ -48,4 +48,9 @@ class ListaDePerfilHuaweiTest {
                   ------------------------------------------------------------------------------
                 """).orElseThrow().total()).isZero();
     }
+
+    @Test
+    void unPerfilSinOnusEsUnaListaVacia() {
+        assertThat(ListaDePerfilHuawei.leer("  Failure: The profile is not bound").orElseThrow().total()).isZero();
+    }
 }

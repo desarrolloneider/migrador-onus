@@ -34,6 +34,9 @@ public record ListaDePerfilHuawei(Map<String, SortedSet<Integer>> ontsPorPuerto)
 
     /** Vacío si alguna línea no tiene el formato conocido o si la OLT respondió un error. */
     public static Optional<ListaDePerfilHuawei> leer(String texto) {
+        if (texto != null && texto.toLowerCase(java.util.Locale.ROOT).contains("the profile is not bound")) {
+            return Optional.of(new ListaDePerfilHuawei(Map.of()));
+        }
         if (texto == null || RespuestaHuawei.esError(texto)) {
             return Optional.empty();
         }
