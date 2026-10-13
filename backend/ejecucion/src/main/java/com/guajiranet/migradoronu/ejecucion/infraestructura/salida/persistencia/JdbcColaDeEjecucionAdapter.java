@@ -85,7 +85,7 @@ public class JdbcColaDeEjecucionAdapter implements ColaDeEjecucionPort {
             jdbc.sql("UPDATE ejecuciones_onu SET estado = 'EN_CURSO', paso_actual = 'P01', iniciada_en = now(), proceso_id = ? WHERE id = ?")
                     .params(procesoId, id.get()).update();
             TrabajoOnu trabajo = jdbc.sql("""
-                            SELECT e.id, e.lote_id, l.numero, l.simulacion, l.confirmado_por, e.sn, i.olt_codigo, i.tarjeta, i.pon, i.onu_id,
+                            SELECT e.id, e.lote_id, l.numero, l.simulacion, l.confirmado_por, e.sn, i.olt_codigo, i.tarjeta, i.pon, i.onu_id, l.tipo,
                                    l.parametros_usados->>'perfil_tr069' AS perfil,
                                    l.parametros_usados->>'guardar_configuracion_olt' AS guardar,
                                    (SELECT string_agg(v, ',') FROM jsonb_array_elements_text(
@@ -99,7 +99,8 @@ public class JdbcColaDeEjecucionAdapter implements ColaDeEjecucionPort {
                             rs.getLong("confirmado_por"), rs.getString("sn"), rs.getString("olt_codigo"), rs.getString("tarjeta"),
                             rs.getInt("pon"), rs.getInt("onu_id"), rs.getString("perfil") == null ? "GUAJIRANET1" : rs.getString("perfil"),
                             rs.getString("guardar") != null && !"NO_GUARDAR".equals(rs.getString("guardar")),
-                            rs.getString("origenes") == null ? null : java.util.List.of(rs.getString("origenes").split(","))))
+                            rs.getString("origenes") == null ? null : java.util.List.of(rs.getString("origenes").split(",")),
+                            rs.getString("tipo")))
                     .single();
             jdbc.sql("UPDATE lotes SET estado = 'EN_EJECUCION', iniciado_en = coalesce(iniciado_en, now()) WHERE id = ? AND estado = 'CONFIRMADO'")
                     .param(trabajo.loteId()).update();

@@ -4,13 +4,24 @@ import java.util.List;
 
 /** Marca obligatoria y filtros opcionales por OLT, tarjeta y puerto PON (ESP-03). */
 public record ClassifyOnusCommand(String marca, String oltCodigo, String tarjeta, Integer pon, List<String> perfilesOrigen,
-                                  List<String> sns) {
+                                  List<String> sns, String tipo) {
+
+    /** El lote pone la IP de gestión DHCP en la VLAN de gestión (SmartOLT) en lugar de cambiar el perfil TR-069. */
+    public static final String VLAN_GESTION = "VLAN_GESTION";
+
+    public ClassifyOnusCommand(String marca, String oltCodigo, String tarjeta, Integer pon, List<String> perfilesOrigen, List<String> sns) {
+        this(marca, oltCodigo, tarjeta, pon, perfilesOrigen, sns, null);
+    }
+
+    public boolean esVlanGestion() {
+        return VLAN_GESTION.equals(tipo);
+    }
 
     /** Las ONUs sin perfil TR-069, cuando se escogen como origen. */
     public static final String SIN_PERFIL = "SIN_PERFIL";
 
     public ClassifyOnusCommand(String marca, String oltCodigo, String tarjeta, Integer pon) {
-        this(marca, oltCodigo, tarjeta, pon, null, null);
+        this(marca, oltCodigo, tarjeta, pon, null, null, null);
     }
 
 

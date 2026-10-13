@@ -45,7 +45,10 @@ public class MigradorWorkerApplication {
     @Bean
     EjecutorDeOnus ejecutorDeOnus(ColaDeEjecucionPort cola, OltConsoleFactoryPort consolas, CambioDePerfilUnaOnu cambio,
                                   @Value("${migrador.perfil-origen:GUAJIRANET}") String perfilOrigen,
-                                  com.guajiranet.migradoronu.comun.puertos.AuditTrailPort auditoria) {
-        return new EjecutorDeOnus(cola, consolas, cambio, perfilOrigen, auditoria);
+                                  com.guajiranet.migradoronu.comun.puertos.AuditTrailPort auditoria,
+                                  com.guajiranet.migradoronu.ejecucion.puertos.salida.GestionSmartOltPort smartOlt,
+                                  @Value("${MIGRADOR_VLAN_GESTION:46}") int vlanGestion) {
+        return new EjecutorDeOnus(cola, consolas, cambio, perfilOrigen, auditoria,
+                new com.guajiranet.migradoronu.ejecucion.aplicacion.CambioDeGestionUnaOnu(smartOlt, auditoria), vlanGestion);
     }
 }

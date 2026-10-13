@@ -31,9 +31,13 @@ public class EjecutorDeOnus {
     private final CambioDePerfilUnaOnu cambio;
     private final String perfilOrigen;
     private final AuditTrailPort auditoria;
+    private final CambioDeGestionUnaOnu gestion;
+    private final int vlanGestion;
 
     public EjecutorDeOnus(ColaDeEjecucionPort cola, OltConsoleFactoryPort consolas, CambioDePerfilUnaOnu cambio, String perfilOrigen,
-                          AuditTrailPort auditoria) {
+                          AuditTrailPort auditoria, CambioDeGestionUnaOnu gestion, int vlanGestion) {
+        this.gestion = Objects.requireNonNull(gestion, "gestion");
+        this.vlanGestion = vlanGestion;
         this.cola = Objects.requireNonNull(cola, "cola");
         this.consolas = Objects.requireNonNull(consolas, "consolas");
         this.cambio = Objects.requireNonNull(cambio, "cambio");
@@ -114,6 +118,10 @@ public class EjecutorDeOnus {
             return false;
         }
         TrabajoOnu t = tomado.get();
+        if (t.esVlanGestion()) {
+            ejecutarGestion(t);
+            return true;
+        }
         boolean enGrupo = onusPorGuardado > 1 && t.guardar();
         try {
             String[] tarjeta = t.tarjeta().split("/");
@@ -149,6 +157,22 @@ public class EjecutorDeOnus {
             guardar(s, t.loteId());
         }
         return true;
+    }
+
+    /** Lote de VLAN de gestión: el cambio va por SmartOLT; no usa la consola de la OLT ni el save. */
+    private void ejecutarGestion(TrabajoOnu t) {
+        try {
+            Contexto ctx = new Contexto(ActorType.PROCESO_EJECUTOR, t.confirmadoPor(), t.loteId(), t.ejecucionId(),
+                    paso -> cola.avanzarPaso(t.ejecucionId(), paso));
+            Resultado r = gestion.ejecutar(t, vlanGestion, !t.simulacion(), ctx);
+            switch (r.fin()) {
+                case COMPLETADA, SIMULADA -> cola.terminar(t.ejecucionId(), "COMPLETADA", r.paso(), null, r.mensaje());
+                case YA_TENIA, EXCLUIDA -> cola.terminar(t.ejecucionId(), "EXCLUIDA_AL_EJECUTAR", r.paso(), r.codigoFallo(), r.mensaje());
+                case FALLIDA -> cola.terminar(t.ejecucionId(), "FALLIDA", r.paso(), r.codigoFallo(), r.mensaje());
+            }
+        } catch (RuntimeException e) {
+            cola.terminar(t.ejecucionId(), "FALLIDA", "P02", "FALLO_SISTEMA_NO_RESPONDE", "El ejecutor no pudo procesar la ONU: " + e.getMessage());
+        }
     }
 
     /** Al terminar con la OLT (no quedan ONUs, parada o detención): guarda lo pendiente y cierra la sesión. */

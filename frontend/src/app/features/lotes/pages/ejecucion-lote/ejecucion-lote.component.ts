@@ -1,4 +1,4 @@
-﻿import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, computed, inject, input, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, computed, inject, input, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatButtonModule } from '@angular/material/button';
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
@@ -461,11 +461,15 @@ export class EjecucionLoteComponent implements OnInit {
         const nota = `Reintento pedido desde el lote ${e.loteNumero}: ${e.codigo ?? 'fallo'}.`;
         return e.revisada ? of(null) : this.ejecucionesService.marcarRevisada(e.id, { nota });
       }),
-      switchMap(() => this.lotesService.armarPruebaIndividual({ sn: e.sn })),
+      // En un lote de VLAN el reintento vuelve a poner la VLAN de gestión, no el perfil.
+      switchMap(() => this.lote()?.filtros.tipo === 'VLAN_GESTION'
+        ? this.lotesService.armarVistaPrevia({ marca: 'TODAS', olt: null, tarjeta: null, pon: null, sns: [e.sn], tipo: 'VLAN_GESTION' })
+        : this.lotesService.armarPruebaIndividual({ sn: e.sn })),
       switchMap((vista) => {
         const item = vista.items[0];
         if (!item || item.grupo !== 'ENTRA') {
-          const motivo = item?.grupo === 'YA_TIENE_PERFIL' ? 'ya tiene GUAJIRANET1: no hace falta reintentar.'
+          const motivo = item?.grupo === 'YA_TIENE_PERFIL'
+            ? (this.lote()?.filtros.tipo === 'VLAN_GESTION' ? 'ya tiene la gestión en la VLAN 46: no hace falta reintentar.' : 'ya tiene GUAJIRANET1: no hace falta reintentar.')
             : item?.mensaje ?? 'no se encontró en SmartOLT.';
           this.avisos.open(`${e.sn}: ${motivo}`, 'Cerrar', { duration: 10_000 });
           return this.lotesService.descartar(vista.lote.id).pipe(map(() => null));
@@ -508,7 +512,8 @@ export class EjecucionLoteComponent implements OnInit {
       }),
       switchMap(() => this.lotesService.armarVistaPrevia({
         marca: 'TODAS', olt: olts.length === 1 ? olts[0] : null, tarjeta: null, pon: null,
-        perfiles: ['GUAJIRANET', 'SIN_PERFIL'], sns: fallidas.map((f) => f.sn),
+        perfiles: this.lote()?.filtros.tipo === 'VLAN_GESTION' ? null : ['GUAJIRANET', 'SIN_PERFIL'], sns: fallidas.map((f) => f.sn),
+        tipo: this.lote()?.filtros.tipo ?? 'PERFIL_TR069',
       })),
       switchMap((vista) => {
         const entran = vista.items.filter((i) => i.grupo === 'ENTRA').length;

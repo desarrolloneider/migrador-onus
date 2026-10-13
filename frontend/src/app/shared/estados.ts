@@ -71,11 +71,12 @@ export const SIMULACION: Presentacion = { etiqueta: 'Simulación', icono: 'scien
 export const INDIVIDUAL: Presentacion = { etiqueta: 'Individual', icono: 'person', tono: 'neutro' };
 
 /** Describe los filtros de un lote: "RIOHACHA01 · tarjeta 0/1 · PON 2". */
-export function describirFiltros(filtros: { olt: string | null; tarjeta: string | null; pon: number | null }): string {
+export function describirFiltros(filtros: { olt: string | null; tarjeta: string | null; pon: number | null; tipo?: string }): string {
+  const tipo = filtros.tipo === 'VLAN_GESTION' ? 'Gestión VLAN 46 · ' : '';
   if (!filtros.olt) {
-    return 'Todas las OLT';
+    return tipo + 'Todas las OLT';
   }
-  const partes = [filtros.olt];
+  const partes = [tipo + filtros.olt];
   if (filtros.tarjeta) partes.push(`tarjeta ${filtros.tarjeta}`);
   if (filtros.pon !== null && filtros.pon !== undefined) partes.push(`PON ${filtros.pon}`);
   return partes.join(' · ');

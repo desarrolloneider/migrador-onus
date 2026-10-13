@@ -108,7 +108,7 @@ public class LotesUseCase implements BuildBatchPort, ControlBatchPort, QueryBatc
         Map<String, Object> usados = lotes.parametrosDeVistaPrevia(loteId);
         BatchFilters f = lote.filtros();
         return buildPreview(new BuildBatchCommand(usuarioId, new BatchFilters(f.marca(), f.oltCodigo(), f.tarjeta(), f.pon(),
-                textos(usados.get(PERFILES_ORIGEN)), textos(usados.get(SNS)))));
+                textos(usados.get(PERFILES_ORIGEN)), textos(usados.get(SNS)), f.tipo())));
     }
 
     private static List<String> textos(Object valor) {
@@ -139,7 +139,8 @@ public class LotesUseCase implements BuildBatchPort, ControlBatchPort, QueryBatc
         });
         // Las que la OLT muestra ya con el perfil nuevo resuelven sus fallas anteriores (no se ofrecen para reintentar).
         List<String> yaCorregidas = ordenadas.stream().filter(c -> c.grupo() == ItemGroup.YA_TIENE_PERFIL).map(ClassifiedOnu::sn).toList();
-        if (!yaCorregidas.isEmpty()) {
+        // Solo en lotes de perfil: en uno de VLAN, "ya la tiene" habla de la VLAN, no del perfil de las fallas anteriores.
+        if (!yaCorregidas.isEmpty() && !filtros.esVlanGestion()) {
             ejecuciones.yaTienenElPerfil(id, usuarioId, yaCorregidas);
         }
         LoteDetalle lote = lotes.detalle(id).orElseThrow();
@@ -148,6 +149,7 @@ public class LotesUseCase implements BuildBatchPort, ControlBatchPort, QueryBatc
         peticion.put("olt", filtros.oltCodigo());
         peticion.put("tarjeta", filtros.tarjeta());
         peticion.put("pon", filtros.pon());
+        peticion.put("tipo", filtros.tipo());
         auditar(AuditAction.VISTA_PREVIA_ARMADA, usuarioId, lote, peticion, "Vista previa " + lote.numero() + ": "
                 + lote.contadores().get("entran") + " entran, " + lote.contadores().get("excluidas") + " quedan fuera, "
                 + lote.contadores().get("yaTienenPerfil") + " ya tienen el perfil.");

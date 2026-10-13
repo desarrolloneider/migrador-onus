@@ -17,7 +17,7 @@ import { TiempoRealService } from '../../../../core/realtime/tiempo-real.service
 import { ConfiguracionService } from '../../../configuracion/data/configuracion.service';
 import { Olt } from '../../../configuracion/models/configuracion.model';
 import { LotesService } from '../../data/lotes.service';
-import { OnusDeOlt } from '../../models/lote.model';
+import { OnusDeOlt, TipoLote } from '../../models/lote.model';
 
 /** Armar un lote: marca y, si se quiere, OLT, tarjeta y puerto PON (ESP-03). */
 @Component({
@@ -51,6 +51,15 @@ import { OnusDeOlt } from '../../models/lote.model';
       <div class="disposicion">
         <form class="tarjeta" [formGroup]="formulario" (ngSubmit)="armar()">
           <h2><mat-icon>tune</mat-icon> Qué ONUs</h2>
+          <div class="tipos" role="radiogroup" aria-label="Qué cambia el lote">
+            @for (t of tipos; track t.valor) {
+              <button type="button" class="tipo" role="radio" [attr.aria-checked]="tipo() === t.valor" [class.activo]="tipo() === t.valor"
+                      (click)="escogerTipo(t.valor)">
+                <mat-icon>{{ t.icono }}</mat-icon>
+                <span><strong>{{ t.nombre }}</strong><small>{{ t.descripcion }}</small></span>
+              </button>
+            }
+          </div>
           <mat-form-field class="ancho-completo">
             <mat-label>Marca</mat-label>
             <mat-select formControlName="marca">
@@ -344,6 +353,16 @@ import { OnusDeOlt } from '../../models/lote.model';
     .avance li mat-icon { font-size: 18px; width: 18px; height: 18px; color: var(--color-exito); }
     .avance li.actual { color: var(--mat-sys-on-surface); font-weight: 500; }
     .avance li.actual mat-icon { color: var(--color-progreso); }
+    .tipos { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    @media (max-width: 600px) { .tipos { grid-template-columns: 1fr; } }
+    .tipo { display: flex; gap: 10px; align-items: flex-start; text-align: left; padding: 12px; border-radius: 14px; cursor: pointer;
+      border: 1px solid var(--mat-sys-outline-variant); background: transparent; color: inherit; font: inherit; transition: border-color .15s ease, background .15s ease; }
+    .tipo:hover { border-color: var(--mat-sys-primary); }
+    .tipo.activo { border-color: var(--mat-sys-primary); background: color-mix(in srgb, var(--mat-sys-primary) 10%, transparent);
+      box-shadow: inset 0 0 0 1px var(--mat-sys-primary); }
+    .tipo mat-icon { color: var(--mat-sys-primary); }
+    .tipo span { display: flex; flex-direction: column; gap: 2px; }
+    .tipo small { color: var(--mat-sys-on-surface-variant); font-size: 12px; line-height: 1.35; }
     .guia ol { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 10px; line-height: 1.45; }
   `,
 })
@@ -398,6 +417,22 @@ export class NuevoLoteComponent {
 
   protected tieneGestion(o: { modoGestion: string | null; vlanGestion: number | null }): boolean {
     return !!o.modoGestion && o.modoGestion.toLowerCase() !== 'inactive' && o.vlanGestion === this.vlanGestion;
+  }
+
+  protected readonly tipos = [
+    { valor: 'PERFIL_TR069' as TipoLote, nombre: 'Perfil TR-069', icono: 'router',
+      descripcion: 'Pone GUAJIRANET1 en la OLT (por consola).' },
+    { valor: 'VLAN_GESTION' as TipoLote, nombre: 'Gestión VLAN 46', icono: 'settings_ethernet',
+      descripcion: 'IP de gestión DHCP en la VLAN 46 en SmartOLT, para que llegue a GenieACS. Necesita GUAJIRANET1.' },
+  ];
+  protected readonly tipo = signal<TipoLote>('PERFIL_TR069');
+
+  protected escogerTipo(valor: TipoLote): void {
+    this.tipo.set(valor);
+    this.seleccionadas.set(new Set());
+    this.filtroPerfil.set(valor === 'VLAN_GESTION' ? this.perfilDestino : null);
+    this.filtroGestion.set(valor === 'VLAN_GESTION' ? 'SIN' : 'TODAS');
+    this.pagina.set(0);
   }
 
   protected readonly estados = [
@@ -541,7 +576,11 @@ export class NuevoLoteComponent {
   }
 
   /** Las que ya tienen el perfil nuevo no se seleccionan: no hay nada que cambiarles. */
-  protected seleccionable(o: { perfil: string | null }): boolean {
+  protected seleccionable(o: { perfil: string | null; modoGestion?: string | null; vlanGestion?: number | null }): boolean {
+    if (this.tipo() === 'VLAN_GESTION') {
+      // Gestión VLAN 46: solo las que ya tienen GUAJIRANET1 (si no, no sabrían a qué ACS reportarse) y aún no la tienen.
+      return o.perfil?.toUpperCase() === this.perfilDestino && !this.tieneGestion({ modoGestion: o.modoGestion ?? null, vlanGestion: o.vlanGestion ?? null });
+    }
     return o.perfil?.toUpperCase() !== this.perfilDestino;
   }
 
@@ -599,8 +638,9 @@ export class NuevoLoteComponent {
       olt: valores.olt ?? null,
       tarjeta: valores.tarjeta ?? null,
       pon: valores.pon === null || valores.pon === undefined || String(valores.pon) === '' ? null : Number(valores.pon),
-      perfiles: this.seleccionadas().size ? this.perfilesDeLaSeleccion() : null,
+      perfiles: this.tipo() === 'PERFIL_TR069' && this.seleccionadas().size ? this.perfilesDeLaSeleccion() : null,
       sns: this.seleccionadas().size ? [...this.seleccionadas()] : null,
+      tipo: this.tipo(),
     }).pipe(finalize(() => {
       this.armando.set(false);
       avance.unsubscribe();

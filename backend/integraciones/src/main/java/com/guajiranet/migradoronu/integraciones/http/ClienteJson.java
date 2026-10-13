@@ -91,6 +91,35 @@ public final class ClienteJson {
         }
     }
 
+    /**
+     * POST con formulario, para los cambios. Un cambio no se reintenta a ciegas: solo se espera y repite si el
+     * servicio responde 429 (no lo procesó). Cualquier otro error se informa tal cual, con lo que respondió.
+     */
+    public JsonNode postFormulario(String ruta, Map<String, String> campos) {
+        org.springframework.util.LinkedMultiValueMap<String, String> cuerpo = new org.springframework.util.LinkedMultiValueMap<>();
+        campos.forEach(cuerpo::add);
+        for (int esperas429 = 0; ; esperas429++) {
+            try {
+                String respuesta = rest.post().uri(ruta).contentType(org.springframework.http.MediaType.APPLICATION_FORM_URLENCODED)
+                        .body(cuerpo).retrieve().body(String.class);
+                return json.readTree(respuesta == null ? "null" : respuesta);
+            } catch (HttpStatusCodeException e) {
+                if (e.getStatusCode().value() == 429 && esperas429 < MAXIMO_ESPERAS_429) {
+                    esperar(retryAfter(e.getResponseHeaders()));
+                    continue;
+                }
+                String detalle = e.getResponseBodyAsString();
+                throw new ErrorDeIntegracion(sistema, mensaje(e.getStatusCode().value())
+                        + (detalle == null || detalle.isBlank() ? "" : " Respuesta: " + (detalle.length() > 300 ? detalle.substring(0, 300) : detalle)), e);
+            } catch (RuntimeException e) {
+                if (e instanceof ErrorDeIntegracion) {
+                    throw e;
+                }
+                throw new ErrorDeIntegracion(sistema, sistema + " no respondió al cambio (" + causaRaiz(e) + "). Hay que revisar si quedó aplicado.", e);
+            }
+        }
+    }
+
     private static String causaRaiz(Throwable e) {
         Throwable t = e;
         while (t.getCause() != null && t.getCause() != t) {

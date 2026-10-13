@@ -44,7 +44,7 @@ import com.guajiranet.migradoronu.lotes.puertos.entrada.QueryBatchDetailsPort;
 @RequestMapping("/api/v1/batches")
 public class LotesController {
 
-    public record FiltrosDto(String marca, String olt, String tarjeta, Integer pon) {
+    public record FiltrosDto(String marca, String olt, String tarjeta, Integer pon, String tipo) {
     }
 
     public record LoteDto(long id, String numero, String modo, boolean simulacion, String estado, FiltrosDto filtros, String creadoPor,
@@ -64,7 +64,7 @@ public class LotesController {
     public record VistaPreviaDto(LoteDto lote, List<ItemDto> items, boolean soloSimulacion, String motivoSoloSimulacion) {
     }
 
-    public record ArmarLoteRequest(String marca, String olt, String tarjeta, Integer pon, List<String> perfiles, List<String> sns) {
+    public record ArmarLoteRequest(String marca, String olt, String tarjeta, Integer pon, List<String> perfiles, List<String> sns, String tipo) {
     }
 
     public record ArmarPruebaIndividualRequest(String sn) {
@@ -101,7 +101,7 @@ public class LotesController {
     @PostMapping("/preview")
     public VistaPreviaDto armar(@RequestBody ArmarLoteRequest cuerpo, @AuthenticationPrincipal UsuarioAutenticado usuario) {
         BatchFilters filtros = new BatchFilters(texto(cuerpo.marca()), texto(cuerpo.olt()), texto(cuerpo.tarjeta()), cuerpo.pon(),
-                cuerpo.perfiles(), cuerpo.sns());
+                cuerpo.perfiles(), cuerpo.sns(), cuerpo.tipo());
         BatchView lote = armar.buildPreview(new BuildBatchCommand(usuario.id(), filtros));
         return vistaPrevia(lote.id());
     }
@@ -191,7 +191,7 @@ public class LotesController {
         BatchFilters f = l.filtros();
         long entran = l.contadores().getOrDefault("entran", 0L);
         return new LoteDto(l.id(), l.numero(), l.modo().name(), l.simulacion(), l.estado().name(),
-                new FiltrosDto(f.marca(), f.oltCodigo(), f.tarjeta(), f.pon()),
+                new FiltrosDto(f.marca(), f.oltCodigo(), f.tarjeta(), f.pon(), f.tipo()),
                 quien.getOrDefault(l.creadoPor(), "Usuario " + l.creadoPor()), l.creadoEn(), l.venceEn(),
                 l.confirmadoPor() == null ? null : quien.getOrDefault(l.confirmadoPor(), "Usuario " + l.confirmadoPor()),
                 l.confirmadoEn(), l.iniciadoEn(), l.terminadoEn(), l.motivoDetencion(), l.procedimientoVersion(), l.contadores(),

@@ -58,9 +58,10 @@ public class ConciliacionConfig {
                                   @Value("${migrador.perfil-origen:GUAJIRANET}") String perfilOrigen,
                                   @Value("${migrador.marcas-onu:*}") String marcas,
                                   @Value("${MIGRADOR_EXIGIR_CONTRATO_WISPRO:false}") boolean exigirContrato,
+                                  @Value("${MIGRADOR_VLAN_GESTION:46}") int vlanGestion,
                                   OltSettingsQueryPort olts, OnuParticipationQueryPort participacion, TargetProfilePort perfil) {
         return new ClasificarOnusUseCase(smartOltInventario, wisproDirectorio,
-                olts, participacion, perfil::perfilDestino, Set.of(marcas.split("\\s*,\\s*")), perfilesOlt, () -> perfilOrigen, exigirContrato);
+                olts, participacion, perfil::perfilDestino, Set.of(marcas.split("\\s*,\\s*")), perfilesOlt, () -> perfilOrigen, exigirContrato).conVlanGestion(vlanGestion);
     }
 
     private static <T> Supplier<T> unaVez(Supplier<T> fabrica) {

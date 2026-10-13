@@ -64,12 +64,12 @@ public class JdbcBatchRepositoryAdapter implements BatchRepositoryPort {
                                  Instant venceEn, Map<String, Object> parametros, List<ClassifiedOnu> items) {
         long id = jdbc.sql("""
                         INSERT INTO lotes (numero, modo, marca, filtro_olt, filtro_tarjeta, filtro_pon, estado, creado_por, creado_en,
-                                           vence_en, parametros_usados)
-                        VALUES (?, ?, ?, ?, ?, ?, 'VISTA_PREVIA', ?, ?, ?, CAST(? AS jsonb))
+                                           vence_en, parametros_usados, tipo)
+                        VALUES (?, ?, ?, ?, ?, ?, 'VISTA_PREVIA', ?, ?, ?, CAST(? AS jsonb), ?)
                         RETURNING id
                         """)
                 .params(numero.value(), modo.name(), filtros.marca(), filtros.oltCodigo(), filtros.tarjeta(), filtros.pon(), usuarioId,
-                        Timestamp.from(ahora), Timestamp.from(venceEn), JSON.writeValueAsString(parametros))
+                        Timestamp.from(ahora), Timestamp.from(venceEn), JSON.writeValueAsString(parametros), filtros.tipo())
                 .query(Long.class).single();
         int orden = 0;
         for (ClassifiedOnu c : items) {
@@ -165,7 +165,8 @@ public class JdbcBatchRepositoryAdapter implements BatchRepositoryPort {
         Long confirmado = rs.wasNull() ? null : confirmadoPor;
         return new LoteDetalle(rs.getLong("id"), rs.getString("numero"), BatchMode.valueOf(rs.getString("modo")),
                 rs.getBoolean("simulacion"), BatchStatus.valueOf(rs.getString("estado")),
-                new BatchFilters(rs.getString("marca"), rs.getString("filtro_olt"), rs.getString("filtro_tarjeta"), filtroPon),
+                new BatchFilters(rs.getString("marca"), rs.getString("filtro_olt"), rs.getString("filtro_tarjeta"), filtroPon, null, null,
+                        rs.getString("tipo")),
                 rs.getLong("creado_por"), instante(rs, "creado_en"), instante(rs, "vence_en"), confirmado,
                 instante(rs, "confirmado_en"), instante(rs, "iniciado_en"), instante(rs, "terminado_en"),
                 rs.getString("motivo_detencion"), rs.getString("procedimiento_version"), contadores);

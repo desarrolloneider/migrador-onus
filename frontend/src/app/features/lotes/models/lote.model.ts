@@ -14,11 +14,15 @@ export type ModoLote = 'LOTE' | 'INDIVIDUAL';
 /** Los tres grupos de la vista previa (ESP-04). */
 export type GrupoVistaPrevia = 'ENTRA' | 'EXCLUIDA' | 'YA_TIENE_PERFIL';
 
+/** PERFIL_TR069: cambia el perfil en la OLT. VLAN_GESTION: pone la IP de gestión DHCP en la VLAN 46 en SmartOLT. */
+export type TipoLote = 'PERFIL_TR069' | 'VLAN_GESTION';
+
 export interface FiltrosLote {
   marca: string;
   olt: string | null;
   tarjeta: string | null;
   pon: number | null;
+  tipo?: TipoLote;
 }
 
 export interface ContadoresLote {
@@ -97,6 +101,8 @@ export interface ArmarLoteRequest {
   perfiles?: string[] | null;
   /** ONUs escogidas una por una. Sin valor: todas las que cumplan los filtros. */
   sns?: string[] | null;
+  /** Qué cambia el lote; sin valor: el perfil TR-069. */
+  tipo?: TipoLote;
 }
 
 export interface ArmarPruebaIndividualRequest {

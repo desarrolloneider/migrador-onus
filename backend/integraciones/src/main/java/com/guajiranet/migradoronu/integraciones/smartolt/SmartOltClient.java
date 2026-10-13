@@ -51,6 +51,25 @@ public class SmartOltClient {
         throw new ErrorDeIntegracion(SISTEMA, "SmartOLT devolvió más de " + MAXIMO_PAGINAS + " páginas; se detuvo la descarga.", null);
     }
 
+    /** Las ONUs con ese SN (filtro sn de SmartOLT, en una sola consulta). */
+    public List<JsonNode> onusPorSn(String sn) {
+        return pagina(Map.of("sn", sn), 1, TAMANO_PAGINA);
+    }
+
+    /**
+     * IP de gestión por DHCP en una VLAN (pantalla "Actualizar IP de gestión" → DHCP + VLAN-ID de gestión). Es el único
+     * cambio que hace este cliente: POST /api/onu/set_onu_mgmt_ip_dhcp/{id externo} con vlan.
+     */
+    public void activarGestionDhcp(String idExterno, int vlan) {
+        JsonNode r = http.postFormulario("/api/onu/set_onu_mgmt_ip_dhcp/" + java.net.URLEncoder.encode(idExterno, java.nio.charset.StandardCharsets.UTF_8),
+                Map.of("vlan", String.valueOf(vlan)));
+        JsonNode estado = r == null ? null : r.get("status");
+        if (estado == null || !estado.asBoolean()) {
+            JsonNode error = r == null ? null : (r.has("error") ? r.get("error") : r.get("response"));
+            throw new ErrorDeIntegracion(SISTEMA, "SmartOLT no aplicó la IP de gestión: " + (error == null ? "sin detalle" : error.asString()), null);
+        }
+    }
+
     /** Una página del inventario. Sirve también para el diagnóstico con tamaño 1. */
     public List<JsonNode> pagina(Map<String, ?> filtros, int pagina, int tamano) {
         Map<String, Object> parametros = new LinkedHashMap<>(filtros);

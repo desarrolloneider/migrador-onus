@@ -80,3 +80,9 @@ CREATE INDEX ix_lote_items_sn ON lote_items (sn);
 ALTER TABLE lote_items DROP CONSTRAINT ck_lote_items_entra;
 ALTER TABLE lote_items ADD CONSTRAINT ck_lote_items_entra CHECK (grupo <> 'ENTRA' OR (olt_id IS NOT NULL AND tarjeta IS NOT NULL AND pon IS NOT NULL AND onu_id IS NOT NULL));
 --rollback ALTER TABLE lote_items DROP CONSTRAINT ck_lote_items_entra;
+
+--changeset migrador:lotes-011-tipo-de-lote
+--comment: Qué cambia el lote: el perfil TR-069 en la OLT (como hasta ahora) o la IP de gestión DHCP en la VLAN 46 en SmartOLT (procedimiento del NOC, 13 de octubre).
+ALTER TABLE lotes ADD COLUMN tipo VARCHAR(20) NOT NULL DEFAULT 'PERFIL_TR069';
+ALTER TABLE lotes ADD CONSTRAINT ck_lotes_tipo CHECK (tipo IN ('PERFIL_TR069', 'VLAN_GESTION'));
+--rollback ALTER TABLE lotes DROP COLUMN tipo;

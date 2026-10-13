@@ -37,7 +37,7 @@ class OnuClassifierModuleAdapterTest {
 
         List<ClassifiedOnu> result = adapter.classify(new BatchFilters("HUAWEI", "RIOHACHA01", "0/1", null));
 
-        assertThat(received.get()).isEqualTo(new ClassifyOnusCommand("HUAWEI", "RIOHACHA01", "0/1", null));
+        assertThat(received.get()).isEqualTo(new ClassifyOnusCommand("HUAWEI", "RIOHACHA01", "0/1", null, null, null, "PERFIL_TR069"));
         assertThat(result).singleElement().satisfies(item -> {
             assertThat(item.grupo()).isEqualTo(ItemGroup.ENTRA);
             assertThat(item.codigoMotivo()).isNull();

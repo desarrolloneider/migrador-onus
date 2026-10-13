@@ -40,6 +40,16 @@ public class ClasificarOnusUseCase implements ClassifyOnusPort {
     private final Supplier<String> perfilDestino;
     private final Set<String> marcasConProcedimiento;
     private final boolean exigirContrato;
+    /** La VLAN de gestión del procedimiento del NOC (SmartOLT: IP de gestión DHCP en esa VLAN). */
+    private int vlanGestion = 46;
+
+    public ClasificarOnusUseCase conVlanGestion(int vlan) {
+        this.vlanGestion = vlan;
+        return this;
+    }
+
+    /** El tipo de la clasificación en curso (lote de perfil o de VLAN). */
+    private final ThreadLocal<Boolean> loteDeVlan = ThreadLocal.withInitial(() -> false);
     private final OltProfilesQueryPort perfilesOlt;
     private final Supplier<String> perfilOrigen;
 
@@ -92,11 +102,13 @@ public class ClasificarOnusUseCase implements ClassifyOnusPort {
                     .toList();
         }
         origenes.set(command.perfilesOrigen());
+        loteDeVlan.set(command.esVlanGestion());
         try {
             return clasificar(onus, porIp(wispro.listAll()));
         } finally {
             origenes.remove();
             marcaDelLote.remove();
+            loteDeVlan.remove();
         }
     }
 
@@ -213,6 +225,9 @@ public class ClasificarOnusUseCase implements ClassifyOnusPort {
         }
         List<Subscriber> contratos = onu.ip() == null ? List.of() : contratosPorIp.getOrDefault(onu.ip(), List.of());
         Subscriber contrato = contratos.size() == 1 ? contratos.getFirst() : null;
+        if (loteDeVlan.get()) {
+            return clasificarParaVlan(sn, onu, pos, contrato, duplicados, perfilesDeLaOlt.isPresent());
+        }
         // Las que ya tienen el perfil nuevo no son exclusiones (spec 8.2).
         if (onu.perfilTr069() != null && onu.perfilTr069().equalsIgnoreCase(perfilDestino.get())) {
             return Classification.alreadyHasProfile(sn, onu, contrato, duplicados);
@@ -251,6 +266,29 @@ public class ClasificarOnusUseCase implements ClassifyOnusPort {
                     "ONU %s no entra al lote: su IP %s aparece en %d contratos de Wispro (%s)."
                             .formatted(sn, onu.ip(), contratos.size(), contratos.stream().map(Subscriber::contrato).collect(Collectors.joining(", "))),
                     onu, null, duplicados);
+        }
+        return validarOltYLotes(sn, onu, pos, contrato, duplicados);
+    }
+
+    /**
+     * Lote "Gestión VLAN 46": la ONU tiene que estar en línea y ya con el perfil destino en la OLT (sin él no sabría a
+     * qué ACS reportarse); las que ya tienen la IP de gestión DHCP en la VLAN van a "ya la tienen".
+     */
+    private Classification clasificarParaVlan(String sn, OnuCandidate onu, OnuPosition pos, Subscriber contrato,
+                                              List<DuplicateRecord> duplicados, boolean perfilLeido) {
+        com.guajiranet.migradoronu.conciliacion.dominio.GestionOnu g = onu.gestion();
+        if (g != null && g.gestionActiva() && g.vlanGestion() != null && g.vlanGestion() == vlanGestion) {
+            return Classification.alreadyHasProfile(sn, onu, contrato, duplicados);
+        }
+        if (!onu.enLinea()) {
+            return Classification.excluded(sn, ExclusionReason.EXC_FUERA_DE_LINEA,
+                    "ONU %s está fuera de línea en SmartOLT.".formatted(sn), onu, null, duplicados);
+        }
+        if (perfilLeido && (onu.perfilTr069() == null || !onu.perfilTr069().equalsIgnoreCase(perfilDestino.get()))) {
+            return Classification.excluded(sn, ExclusionReason.EXC_OTRO_PERFIL,
+                    "ONU %s tiene %s en %s: primero necesita %s en la OLT para que la VLAN %d le sirva.".formatted(sn,
+                            onu.perfilTr069() == null ? "ningún perfil TR-069" : "el perfil " + onu.perfilTr069(), pos.oltCodigo(),
+                            perfilDestino.get(), vlanGestion), onu, contrato, duplicados);
         }
         return validarOltYLotes(sn, onu, pos, contrato, duplicados);
     }
