@@ -1,10 +1,10 @@
 {
   "/api": {
-    "target": "http://127.0.0.1:8090",
+    "target": "http://127.0.0.1:47880",
     "secure": false
   },
   "/ws": {
-    "target": "http://127.0.0.1:8090",
+    "target": "http://127.0.0.1:47880",
     "secure": false,
     "ws": true
   }

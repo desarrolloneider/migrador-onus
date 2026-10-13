@@ -3,13 +3,15 @@
 #   docker build --target worker -t migrador-worker ./backend
 # Las pruebas no corren aquí: las de base de datos necesitan Docker (Testcontainers) y corren en el pipeline.
 
-FROM eclipse-temurin:25-jdk AS compilacion
+# Si Docker Hub falla: REGISTRO=mirror.gcr.io/library/ en el .env
+ARG REGISTRO=
+FROM ${REGISTRO}eclipse-temurin:25-jdk AS compilacion
 WORKDIR /fuente
 COPY . .
 # El wrapper puede venir con fin de línea de Windows si se clonó sin .gitattributes.
 RUN sed -i 's/\r$//' mvnw && chmod +x mvnw && ./mvnw -B -q package -DskipTests
 
-FROM eclipse-temurin:25-jre AS base
+FROM ${REGISTRO}eclipse-temurin:25-jre AS base
 RUN groupadd --system migrador && useradd --system --gid migrador --home /app migrador \
     && mkdir -p /var/lib/migrador/anclas && chown -R migrador:migrador /var/lib/migrador
 WORKDIR /app

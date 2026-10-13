@@ -40,6 +40,14 @@ public class ConciliacionConfig {
     }
 
     @Bean
+    com.guajiranet.migradoronu.conciliacion.aplicacion.EstadoDeOlts estadoDeOlts(SmartOltInventoryAdapter smartOlt,
+            WisproDirectoryAdapter wisproDirectorio, OltSettingsQueryPort olts, OltProfilesQueryPort perfilesOlt,
+            TargetProfilePort perfil, Clock reloj) {
+        return new com.guajiranet.migradoronu.conciliacion.aplicacion.EstadoDeOlts(smartOlt, wisproDirectorio, olts, perfilesOlt,
+                perfil::perfilDestino, reloj);
+    }
+
+    @Bean
     WisproDirectoryAdapter wisproDirectorio(Clock reloj, @Value("${WISPRO_BASE_URL:}") String url,
                                             @Value("${WISPRO_API_TOKEN:}") String token) {
         return new WisproDirectoryAdapter(unaVez(() -> new WisproClient(url, token, Duration.ofSeconds(60))), reloj);

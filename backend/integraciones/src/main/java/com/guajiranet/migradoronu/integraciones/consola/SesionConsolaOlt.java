@@ -170,6 +170,11 @@ public final class SesionConsolaOlt implements AutoCloseable {
                         throw new ErrorDeIntegracion(SISTEMA, "La OLT cerró la sesión.", null);
                     }
                     recibido.write(bufer, 0, n);
+                    // Diagnóstico solo desde la consola (java -Dconsola.crudo=true ... perfiles-crudo <OLT>): lo que manda la OLT tal cual.
+                    if (Boolean.getBoolean("consola.crudo")) {
+                        System.out.println("<<CRUDO>>" + new String(bufer, 0, n, StandardCharsets.UTF_8)
+                                .replace("\u001B", "<ESC>").replace("\r", "<CR>").replace("\n", "<LF>\n").replace("\b", "<BS>"));
+                    }
                     promptVistoEn = null;
                     String texto = limpiar(recibido.toString(StandardCharsets.UTF_8));
                     if (!ecoVisto) {

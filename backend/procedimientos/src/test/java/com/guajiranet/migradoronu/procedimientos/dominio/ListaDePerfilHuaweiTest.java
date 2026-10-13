@@ -68,8 +68,12 @@ class ListaDePerfilHuaweiTest {
     }
 
     @Test
-    void unaLineaCortadaSinContinuacionNoSeAdivina() {
-        assertThat(ListaDePerfilHuawei.leer("  0/ 0/11     2-4,6,\n  0/ 0/12     17")).isEmpty();
+    void unaFilaQueLaOltCortaSeLeeHastaDondeLlego() {
+        // Salida real de OLT_FONSECA: 0/5/11 termina en coma y la OLT no imprime la continuación (faltaba la ONT 55).
+        ListaDePerfilHuawei lista = ListaDePerfilHuawei.leer("  0/ 0/11     2-4,6,\n  0/ 0/12     17").orElseThrow();
+        assertThat(lista.contiene("0/0", 11, 6)).isTrue();
+        assertThat(lista.contiene("0/0", 12, 17)).isTrue();
+        assertThat(lista.total()).isEqualTo(5);
     }
 
     @Test

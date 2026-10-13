@@ -90,21 +90,28 @@ import { DetalleEjecucion } from '../../models/ejecucion.model';
               <p class="vacio">La ONU espera su turno.</p>
             }
             <ol class="linea">
-              @for (evento of d.lineaDeTiempo; track $index) {
-                <li [class.falla]="evento.accion.includes('FALLID') || evento.accion === 'ONU_EXCLUIDA_AL_EJECUTAR'">
-                  <span class="hora">{{ evento.hora | horaColombia: 'hora' }}</span>
+              @for (evento of d.lineaDeTiempo; track $index; let ultimo = $last) {
+                <li [class]="'evento t-' + tonoEvento(evento.accion)" [class.ultimo]="ultimo">
+                  <span class="punto"><mat-icon>{{ iconoEvento(evento.accion) }}</mat-icon></span>
                   <div class="cuerpo">
                     <div class="titulo">
                       @if (evento.paso) { <span class="paso mono">{{ evento.paso }}</span> }
-                      <span class="accion">{{ humanizar(evento.accion) }}</span>
+                      <span class="descripcion">{{ evento.descripcion }}</span>
+                      <span class="hora">{{ evento.hora | horaColombia: 'hora' }}</span>
                     </div>
-                    <p>{{ evento.descripcion }}</p>
-                    @if (evento.comando) { <pre class="consola">{{ evento.comando }}</pre> }
-                    @if (evento.respuesta) {
-                      <details><summary>Respuesta de la OLT</summary><pre class="consola">{{ evento.respuesta }}</pre></details>
+                    @if (evento.comando || evento.respuesta) {
+                      <div class="linea-comando">
+                        @if (evento.comando) { <code class="cmd"><mat-icon>terminal</mat-icon>{{ evento.comando }}</code> }
+                        @if (evento.respuesta) {
+                          <details class="respuesta"><summary>Ver respuesta</summary><pre class="consola">{{ evento.respuesta }}</pre></details>
+                        }
+                      </div>
                     }
                     @if (evento.esperado) {
-                      <p class="verificacion"><span>Esperado:</span> {{ evento.esperado }}<br /><span>Encontrado:</span> {{ evento.encontrado }}</p>
+                      <div class="verificacion">
+                        <span><b>Esperado</b> {{ evento.esperado }}</span>
+                        <span><b>Encontrado</b> {{ evento.encontrado }}</span>
+                      </div>
                     }
                   </div>
                 </li>
@@ -116,9 +123,17 @@ import { DetalleEjecucion } from '../../models/ejecucion.model';
             <section class="tarjeta">
               <h2><mat-icon>photo_camera</mat-icon> Fotografía previa</h2>
               @if (d.fotografiaPrevia; as f) {
-                <p>Perfil TR-069 antes de tocarla: <strong class="mono">{{ f.perfilTr069 ?? 'sin perfil' }}</strong></p>
-                <p class="secundario">Tomada {{ f.tomadaEn | horaColombia: 'completa' }}</p>
-                <pre class="consola">{{ f.textoOlt }}</pre>
+                <div class="perfil-antes">
+                  <span class="etiqueta">Perfil TR-069 antes</span>
+                  <strong class="mono">{{ f.perfilTr069 ?? 'Sin perfil' }}</strong>
+                  <span class="secundario">Tomada {{ f.tomadaEn | horaColombia: 'completa' }}</span>
+                </div>
+                <dl class="campos-onu">
+                  @for (c of camposFoto(); track c.etiqueta) {
+                    <div [class]="'campo ' + (c.tono ?? '')"><dt><mat-icon>{{ c.icono }}</mat-icon>{{ c.etiqueta }}</dt><dd>{{ c.valor }}</dd></div>
+                  }
+                </dl>
+                <details class="texto-olt"><summary><mat-icon>terminal</mat-icon> Texto completo de la OLT</summary><pre class="consola">{{ f.textoOlt }}</pre></details>
                 <dl class="rejilla-datos compacta">
                   @for (dato of datosSmartOlt(); track dato[0]) { <div><dt>{{ dato[0] }}</dt><dd>{{ dato[1] }}</dd></div> }
                 </dl>
@@ -145,27 +160,60 @@ import { DetalleEjecucion } from '../../models/ejecucion.model';
         </div>
 
         <section class="tarjeta">
-          <mat-slide-toggle [checked]="tecnico()" (change)="tecnico.set($event.checked)">Ver detalle técnico</mat-slide-toggle>
+          <div class="cabecera-tecnico">
+            <mat-slide-toggle [checked]="tecnico()" (change)="tecnico.set($event.checked)">Ver detalle técnico</mat-slide-toggle>
+            @if (tecnico()) {
+              <span class="resumen-tecnico">{{ d.pasos.length }} pasos · {{ duracionTotal() | duracion }}</span>
+              <span class="espacio"></span>
+              <button mat-button type="button" (click)="abrirTodos.set(!abrirTodos())">
+                <mat-icon>{{ abrirTodos() ? 'unfold_less' : 'unfold_more' }}</mat-icon> {{ abrirTodos() ? 'Contraer todo' : 'Expandir todo' }}</button>
+            }
+          </div>
           @if (tecnico()) {
-            <div class="contenedor-tabla tecnico">
-              <table class="tabla">
-                <thead><tr><th>Paso</th><th>Estado</th><th>Inicio</th><th class="num">Duración</th><th>Comando</th><th>Respuesta completa</th><th>Esperado / encontrado</th></tr></thead>
-                <tbody>
-                  @for (p of d.pasos; track p.paso) {
-                    <tr>
-                      <td><span class="mono">{{ p.paso }}</span><div class="secundario">{{ p.nombre }}</div></td>
-                      <td><app-estado-chip [presentacion]="estadosPaso[p.estado]" compacto />@if (p.codigo) { <div class="codigo-motivo">{{ p.codigo }}</div> }</td>
-                      <td>{{ p.iniciadoEn | horaColombia: 'hora' }}</td>
-                      <td class="num">{{ p.duracionMs | duracion }}</td>
-                      <td>@if (p.comando) { <pre class="consola">{{ p.comando }}</pre> } @else { — }</td>
-                      <td>@if (p.respuestaOlt) { <pre class="consola">{{ p.respuestaOlt }}</pre> } @else { — }</td>
-                      <td class="secundario">{{ p.esperado ?? '—' }}<br />{{ p.encontrado ?? '' }}</td>
-                    </tr>
-                  }
-                </tbody>
-              </table>
+            <div class="pasos-tecnicos">
+              @for (p of d.pasos; track p.paso + $index) {
+                <details class="paso-tecnico" [class.falla]="p.estado === 'FALLIDO'" [open]="abrirTodos() || p.estado === 'FALLIDO'">
+                  <summary>
+                    <mat-icon class="flecha">chevron_right</mat-icon>
+                    <span class="codigo-paso">{{ p.paso }}</span>
+                    <span class="nombre-paso">{{ p.nombre }}</span>
+                    @if (p.comando) { <code class="comando-corto">{{ primeraLinea(p.comando) }}</code> }
+                    <span class="espacio"></span>
+                    @if (p.codigo) { <span class="codigo-motivo">{{ p.codigo }}</span> }
+                    <app-estado-chip [presentacion]="estadosPaso[p.estado]" compacto />
+                    <span class="meta"><mat-icon>schedule</mat-icon>{{ p.iniciadoEn | horaColombia: 'hora' }}</span>
+                    <span class="meta"><mat-icon>timer</mat-icon>{{ p.duracionMs | duracion }}</span>
+                  </summary>
+                  <div class="contenido-paso">
+                    @if (p.comando) {
+                      <div class="bloque">
+                        <span class="etiqueta">Comando enviado</span>
+                        <pre class="consola comando">{{ p.comando }}</pre>
+                      </div>
+                    }
+                    @if (p.respuestaOlt) {
+                      <div class="bloque">
+                        <div class="etiqueta-fila">
+                          <span class="etiqueta">Respuesta de la OLT</span>
+                          <button mat-button type="button" class="copiar" (click)="copiar(p.respuestaOlt)"><mat-icon>content_copy</mat-icon> Copiar</button>
+                        </div>
+                        <pre class="consola respuesta">{{ p.respuestaOlt }}</pre>
+                      </div>
+                    }
+                    @if (p.esperado || p.encontrado) {
+                      <div class="comparacion">
+                        <div><span class="etiqueta">Esperado</span><p>{{ p.esperado ?? '—' }}</p></div>
+                        <div [class.distinto]="p.estado === 'FALLIDO'"><span class="etiqueta">Encontrado</span><p>{{ p.encontrado ?? '—' }}</p></div>
+                      </div>
+                    }
+                    @if (!p.comando && !p.respuestaOlt && !p.esperado && !p.encontrado) {
+                      <p class="secundario">Este paso no manda comandos a la OLT.</p>
+                    }
+                  </div>
+                </details>
+              }
             </div>
-            <p class="secundario">Las credenciales nunca aparecen aquí ni en la auditoría (RN-25).</p>
+            <p class="secundario nota-credenciales"><mat-icon>lock</mat-icon> Las credenciales nunca aparecen aquí ni en la auditoría (RN-25).</p>
           }
         </section>
       }
@@ -178,21 +226,74 @@ import { DetalleEjecucion } from '../../models/ejecucion.model';
     .lateral { display: flex; flex-direction: column; gap: 16px; }
     @media (max-width: 1000px) { .columnas { grid-template-columns: 1fr; } }
     .linea { list-style: none; margin: 0; padding: 0; }
-    .linea li { display: grid; grid-template-columns: 92px 1fr; gap: 12px; padding: 10px 0; border-top: 1px solid var(--mat-sys-outline-variant); }
-    .linea li:first-child { border-top: 0; }
-    .linea li.falla .accion { color: var(--color-error); }
-    .hora { font-variant-numeric: tabular-nums; font-size: 12px; color: var(--mat-sys-on-surface-variant); padding-top: 2px; }
-    .titulo { display: flex; gap: 8px; align-items: center; }
-    .paso { font-size: 11.5px; padding: 0 6px; border-radius: 6px; background: var(--mat-sys-surface-container-high); }
-    .accion { font-weight: 600; font-size: 13px; }
-    .cuerpo p { margin: 4px 0 0; line-height: 1.45; }
-    details summary { cursor: pointer; font-size: 12.5px; color: var(--mat-sys-primary); margin-top: 6px; }
-    .verificacion { font-size: 12.5px; color: var(--mat-sys-on-surface-variant); }
-    .verificacion span { font-weight: 600; }
+    .evento { position: relative; display: grid; grid-template-columns: 30px 1fr; gap: 12px; padding-bottom: 14px; --c: var(--color-neutro); }
+    .evento::before { content: ''; position: absolute; left: 14px; top: 28px; bottom: 0; width: 2px; background: var(--mat-sys-outline-variant); }
+    .evento.ultimo::before { display: none; }
+    .punto { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; z-index: 1;
+      background: color-mix(in srgb, var(--c) 18%, var(--mat-sys-surface-container-low)); color: var(--c); }
+    .punto mat-icon { font-size: 17px; width: 17px; height: 17px; }
+    .t-exito { --c: var(--color-exito); } .t-error { --c: var(--color-error); } .t-aviso { --c: var(--color-aviso); }
+    .t-info { --c: var(--color-info); } .t-simulado { --c: var(--color-simulado); }
+    .cuerpo { min-width: 0; padding-top: 4px; }
+    .titulo { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+    .paso { font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 6px; background: var(--mat-sys-surface-container-highest); }
+    .descripcion { font-size: 13.5px; line-height: 1.4; flex: 1; min-width: 180px; }
+    .t-error .descripcion { color: var(--color-error); font-weight: 600; }
+    .hora { font-variant-numeric: tabular-nums; font-size: 12px; color: var(--mat-sys-on-surface-variant); white-space: nowrap; }
+    .linea-comando { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 6px; }
+    .cmd { display: inline-flex; align-items: center; gap: 6px; font-family: var(--fuente-mono); font-size: 12px; padding: 4px 10px; border-radius: 8px;
+      background: var(--fondo-consola); color: var(--texto-consola); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .cmd mat-icon { font-size: 14px; width: 14px; height: 14px; opacity: .7; }
+    .respuesta { flex-basis: 100%; }
+    .respuesta summary, .texto-olt summary { cursor: pointer; font-size: 12.5px; color: var(--mat-sys-primary); display: inline-flex; align-items: center; gap: 4px; }
+    .respuesta pre, .texto-olt pre { max-height: 240px; overflow: auto; font-size: 12px; margin: 8px 0 0; }
+    .verificacion { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; font-size: 12.5px; }
+    .verificacion span { padding: 3px 9px; border-radius: 8px; background: var(--mat-sys-surface-container-high); }
+    .verificacion b { color: var(--mat-sys-on-surface-variant); font-weight: 600; margin-right: 4px; }
+    .perfil-antes { display: flex; flex-direction: column; gap: 2px; padding: 12px 14px; border-radius: 12px; background: var(--mat-sys-surface-container-high); }
+    .perfil-antes strong { font-size: 18px; }
+    .etiqueta { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--mat-sys-on-surface-variant); }
+    .campos-onu { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; margin: 12px 0; }
+    .campo { margin: 0; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--mat-sys-outline-variant); }
+    .campo dt { display: flex; align-items: center; gap: 4px; font-size: 11.5px; color: var(--mat-sys-on-surface-variant); }
+    .campo dt mat-icon { font-size: 14px; width: 14px; height: 14px; }
+    .campo dd { margin: 3px 0 0; font-weight: 600; font-size: 13px; word-break: break-word; }
+    .campo.bien dd { color: var(--color-exito); } .campo.mal dd { color: var(--color-error); }
     .compacta { margin-top: 12px; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); }
     .cambios { margin: 0; padding-left: 18px; line-height: 1.6; }
-    .tecnico { margin-top: 12px; }
-    .tecnico pre { max-width: 360px; }
+    .cabecera-tecnico { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .resumen-tecnico { font-size: 13px; color: var(--mat-sys-on-surface-variant); }
+    .espacio { flex: 1; }
+    .pasos-tecnicos { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
+    .paso-tecnico { border: 1px solid var(--mat-sys-outline-variant); border-radius: 14px; background: var(--mat-sys-surface-container-low);
+      overflow: hidden; transition: border-color .15s ease; }
+    .paso-tecnico:hover { border-color: color-mix(in srgb, var(--mat-sys-primary) 40%, transparent); }
+    .paso-tecnico.falla { border-color: color-mix(in srgb, var(--color-error) 55%, transparent); }
+    .paso-tecnico summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 10px; padding: 10px 14px; flex-wrap: wrap; }
+    .paso-tecnico summary::-webkit-details-marker { display: none; }
+    .flecha { transition: transform .18s ease; color: var(--mat-sys-on-surface-variant); }
+    .paso-tecnico[open] .flecha { transform: rotate(90deg); }
+    .codigo-paso { font-family: var(--fuente-mono); font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 6px;
+      background: var(--mat-sys-primary-container); color: var(--mat-sys-on-primary-container); }
+    .nombre-paso { font-weight: 600; font-size: 14px; }
+    .comando-corto { font-family: var(--fuente-mono); font-size: 12px; color: var(--mat-sys-on-surface-variant); max-width: 340px;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .meta { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--mat-sys-on-surface-variant); font-variant-numeric: tabular-nums; }
+    .meta mat-icon { font-size: 15px; width: 15px; height: 15px; }
+    .contenido-paso { padding: 4px 16px 16px 48px; display: flex; flex-direction: column; gap: 12px; border-top: 1px solid var(--mat-sys-outline-variant); }
+    .bloque { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+    .etiqueta { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--mat-sys-on-surface-variant); }
+    .etiqueta-fila { display: flex; align-items: center; justify-content: space-between; }
+    .copiar { min-height: 28px; font-size: 12px; }
+    .consola.comando { margin: 0; white-space: pre-wrap; }
+    .consola.respuesta { margin: 0; max-height: 260px; overflow: auto; white-space: pre; font-size: 12px; }
+    .comparacion { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .comparacion > div { padding: 10px 12px; border-radius: 10px; background: var(--mat-sys-surface-container-high); }
+    .comparacion > div.distinto { background: var(--fondo-error); }
+    .comparacion p { margin: 4px 0 0; font-size: 13px; line-height: 1.45; }
+    .nota-credenciales { display: flex; align-items: center; gap: 6px; margin-top: 12px; }
+    .nota-credenciales mat-icon { font-size: 16px; width: 16px; height: 16px; }
+    @media (max-width: 700px) { .contenido-paso { padding-left: 16px; } .comparacion { grid-template-columns: 1fr; } .comando-corto { display: none; } }
     .secundario { color: var(--mat-sys-on-surface-variant); font-size: 13px; }
   `,
 })
@@ -212,6 +313,56 @@ export class DetalleOnuComponent implements OnInit {
   protected readonly detalle = signal<DetalleEjecucion | null>(null);
   protected readonly error = signal<string | null>(null);
   protected readonly tecnico = signal(false);
+  protected readonly abrirTodos = signal(false);
+  protected readonly duracionTotal = computed(() => (this.detalle()?.pasos ?? []).reduce((t, p) => t + (p.duracionMs ?? 0), 0));
+
+  /** Los datos que importan de la foto previa (display ont info), en lugar del texto completo. */
+  protected readonly camposFoto = computed(() => {
+    const texto = this.detalle()?.fotografiaPrevia?.textoOlt ?? '';
+    const valor = (clave: string): string | null => {
+      const m = texto.match(new RegExp('^\\s*' + clave + '\\s*:\\s*(.+)$', 'mi'));
+      return m ? m[1].trim() : null;
+    };
+    const campos: { etiqueta: string; icono: string; valor: string | null; tono?: string }[] = [
+      { etiqueta: 'Estado', icono: 'wifi', valor: valor('Run state'), tono: valor('Run state') === 'online' ? 'bien' : 'mal' },
+      { etiqueta: 'Posición', icono: 'lan', valor: [valor('F/S/P'), valor('ONT-ID')].every(Boolean) ? valor('F/S/P') + ' · ONT ' + valor('ONT-ID') : null },
+      { etiqueta: 'SN', icono: 'qr_code', valor: valor('SN') },
+      { etiqueta: 'Configuración', icono: 'tune', valor: valor('Config state'), tono: valor('Config state') === 'normal' ? 'bien' : undefined },
+      { etiqueta: 'Coincidencia', icono: 'verified', valor: valor('Match state'), tono: valor('Match state') === 'match' ? 'bien' : 'mal' },
+      { etiqueta: 'Distancia', icono: 'straighten', valor: valor('ONT distance\\(m\\)') ? valor('ONT distance\\(m\\)') + ' m' : null },
+      { etiqueta: 'Temperatura', icono: 'device_thermostat', valor: valor('Temperature') },
+      { etiqueta: 'CPU / memoria', icono: 'memory', valor: [valor('CPU occupation'), valor('Memory occupation')].every(Boolean) ? valor('CPU occupation') + ' / ' + valor('Memory occupation') : null },
+      { etiqueta: 'En línea hace', icono: 'schedule', valor: valor('ONT online duration')?.replace(/day\(s\)/, 'd').replace(/hour\(s\)/, 'h').replace(/minute\(s\)/, 'min').replace(/second\(s\)/, 's') ?? null },
+      { etiqueta: 'Última caída', icono: 'history', valor: valor('Last down cause') },
+      { etiqueta: 'Gestión', icono: 'settings_ethernet', valor: valor('Management mode') },
+    ];
+    return campos.filter((c) => c.valor && c.valor !== '-') as { etiqueta: string; icono: string; valor: string; tono?: string }[];
+  });
+
+  protected tonoEvento(accion: string): string {
+    if (/FALLID|RECHAZ/.test(accion)) return 'error';
+    if (/EXCLUIDA/.test(accion)) return 'aviso';
+    if (/COMPLETADA|VERIFIC/.test(accion)) return 'exito';
+    if (/SIMULAD/.test(accion)) return 'simulado';
+    return 'info';
+  }
+
+  protected iconoEvento(accion: string): string {
+    if (/FALLID|RECHAZ/.test(accion)) return 'close';
+    if (/EXCLUIDA/.test(accion)) return 'block';
+    if (/COMPLETADA/.test(accion)) return 'check';
+    if (/SIMULAD/.test(accion)) return 'science';
+    if (/COMANDO/.test(accion)) return 'terminal';
+    return 'radio_button_checked';
+  }
+
+  protected primeraLinea(texto: string): string {
+    return texto.split('\n')[0];
+  }
+
+  protected copiar(texto: string): void {
+    void navigator.clipboard?.writeText(texto).then(() => this.avisos.open('Respuesta copiada.', 'Cerrar', { duration: 2_000 }));
+  }
 
   protected readonly datosSmartOlt = computed(() => Object.entries(this.detalle()?.fotografiaPrevia?.datosSmartOlt ?? {}));
   protected readonly claseAviso = computed(() => {

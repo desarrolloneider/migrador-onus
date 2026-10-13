@@ -12,9 +12,17 @@ import com.guajiranet.migradoronu.conciliacion.aplicacion.ConsultarOnusDeOlt.Onu
 public class OnusDeOltController {
 
     private final ConsultarOnusDeOlt consulta;
+    private final com.guajiranet.migradoronu.conciliacion.aplicacion.EstadoDeOlts estado;
 
-    public OnusDeOltController(ConsultarOnusDeOlt consulta) {
+    public OnusDeOltController(ConsultarOnusDeOlt consulta, com.guajiranet.migradoronu.conciliacion.aplicacion.EstadoDeOlts estado) {
         this.consulta = consulta;
+        this.estado = estado;
+    }
+
+    /** El tablero "Estado de OLT": totales por OLT. Solo lectura. */
+    @GetMapping("/api/v1/olt-status")
+    public com.guajiranet.migradoronu.conciliacion.aplicacion.EstadoDeOlts.Estado estado() {
+        return estado.consultar();
     }
 
     @GetMapping("/api/v1/olts/{codigo}/onus")

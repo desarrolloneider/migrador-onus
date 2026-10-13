@@ -33,6 +33,9 @@ final class ReglasDePermiso {
             }
             return modulo(Modulo.LOTES, "ver o armar lotes");
         }
+        if (ruta.startsWith("/api/v1/olt-status")) {
+            return modulo(Modulo.LOTES, "ver el estado de las OLT");
+        }
         if (ruta.matches("/api/v1/olts/[^/]+/onus")) {
             return modulo(Modulo.LOTES, "ver las ONUs de las OLT");
         }

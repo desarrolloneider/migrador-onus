@@ -8,7 +8,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatSelectModule } from '@angular/material/select';
-import { Router, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { Subject, Subscription, catchError, finalize, merge, of, switchMap, tap } from 'rxjs';
 import { mensajeDeError } from '../../../../core/api/errores';
 import { AuthService } from '../../../../core/auth/auth.service';
@@ -502,6 +502,11 @@ export class NuevoLoteComponent {
       pon.reset(null);
       valor ? pon.enable() : pon.disable();
     });
+    // Desde "Estado de OLT" (?olt=CODIGO) se llega con la OLT ya escogida.
+    const oltPedida = inject(ActivatedRoute).snapshot.queryParamMap.get('olt');
+    if (oltPedida) {
+      queueMicrotask(() => olt.setValue(oltPedida));
+    }
   }
 
   /** Las que ya tienen el perfil nuevo no se seleccionan: no hay nada que cambiarles. */

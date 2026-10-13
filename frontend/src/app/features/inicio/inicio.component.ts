@@ -28,7 +28,7 @@ import { Lote } from '../lotes/models/lote.model';
           <p class="subtitulo">Cambia el perfil TR-069 de las ONUs Huawei a <strong>GUAJIRANET1</strong> por comando en la OLT, por lotes o de a una, verificando cada paso.</p>
         </div>
         <div class="acciones">
-          <a mat-stroked-button routerLink="/prueba-individual"><mat-icon>labs</mat-icon> Prueba individual</a>
+          <a mat-stroked-button routerLink="/estado-olts"><mat-icon>monitoring</mat-icon> Estado de OLT</a>
           <a mat-flat-button routerLink="/lotes/nuevo"><mat-icon>add</mat-icon> Nuevo lote</a>
         </div>
       </header>

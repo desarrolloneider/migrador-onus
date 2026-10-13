@@ -38,7 +38,7 @@ Monorepo con **backend** Java 25 / Spring Boot 4.1.1 (Maven multi-módulo, hexag
    docker compose up -d postgres
    ```
 
-3. Arrancar el backend. Aplica las migraciones y queda en http://127.0.0.1:8080/actuator (en Docker: 127.0.0.1:8090)/health:
+3. Arrancar el backend. Aplica las migraciones y queda en http://127.0.0.1:8080/actuator (en Docker: 127.0.0.1:47880)/health:
 
    ```bash
    cd backend && ./mvnw -q package -DskipTests && java -jar arranque-web/target/migrador-web.jar
@@ -74,7 +74,7 @@ cd frontend && pnpm test --watch=false
 
 ## Stack completo con Docker
 
-Levanta PostgreSQL, el proceso web, el proceso ejecutor y el frontend en http://127.0.0.1:4200:
+Levanta PostgreSQL, el proceso web, el proceso ejecutor y el frontend en http://127.0.0.1:47843:
 
 ```bash
 docker compose up -d --build

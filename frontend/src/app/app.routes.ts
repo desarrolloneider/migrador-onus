@@ -56,11 +56,11 @@ export const routes: Routes = [
         loadComponent: () => import('./features/ejecuciones/pages/detalle-onu/detalle-onu.component').then((m) => m.DetalleOnuComponent),
       },
       {
-        path: 'prueba-individual', canActivate: [moduloGuard], data: { modulo: 'LOTES' },
-        title: 'Prueba individual' + SUFIJO,
-        loadComponent: () =>
-          import('./features/prueba-individual/prueba-individual.component').then((m) => m.PruebaIndividualComponent),
+        path: 'estado-olts', canActivate: [moduloGuard], data: { modulo: 'LOTES' },
+        title: 'Estado de OLT' + SUFIJO,
+        loadComponent: () => import('./features/estado-olts/estado-olts.component').then((m) => m.EstadoOltsComponent),
       },
+      { path: 'prueba-individual', redirectTo: 'estado-olts' },
       {
         path: 'historial', canActivate: [moduloGuard], data: { modulo: 'HISTORIAL' },
         title: 'Historial de ONUs' + SUFIJO,

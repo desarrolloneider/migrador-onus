@@ -66,10 +66,10 @@ public record ListaDePerfilHuawei(Map<String, SortedSet<Integer>> ontsPorPuerto)
         Map<String, SortedSet<Integer>> resultado = new LinkedHashMap<>();
         for (Map.Entry<String, StringBuilder> lista : listas.entrySet()) {
             SortedSet<Integer> onts = resultado.computeIfAbsent(lista.getKey(), k -> new TreeSet<>());
-            String valores = lista.getValue().toString();
-            if (valores.endsWith(",")) {
-                return Optional.empty();
-            }
+            // Algunas OLT (OLT_FONSECA, 10 de octubre) cortan una fila larga: termina en coma y no imprimen la continuación.
+            // Se toma lo que sí vino. Las ONUs que falten salen "sin perfil" y entran al lote, pero antes de tocarlas el
+            // ejecutor lee cada una en la OLT: si ya tiene el perfil destino queda como "ya lo tenía" y no se cambia.
+            String valores = lista.getValue().toString().replaceAll(",+$", "");
             for (String parte : valores.split(",")) {
                 Matcher r = RANGO.matcher(parte);
                 if (!r.matches()) {

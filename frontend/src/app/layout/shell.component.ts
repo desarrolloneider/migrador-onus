@@ -154,7 +154,7 @@ export class ShellComponent {
     { ruta: '/inicio', etiqueta: 'Inicio', icono: 'home' },
     { ruta: '/lotes/nuevo', etiqueta: 'Nuevo lote', icono: 'add_circle', modulo: 'LOTES' },
     { ruta: '/lotes', etiqueta: 'Lotes', icono: 'inventory_2', modulo: 'LOTES' },
-    { ruta: '/prueba-individual', etiqueta: 'Prueba individual', icono: 'labs', modulo: 'LOTES' },
+    { ruta: '/estado-olts', etiqueta: 'Estado de OLT', icono: 'monitoring', modulo: 'LOTES' },
     { ruta: '/historial', etiqueta: 'Historial de ONUs', icono: 'history', modulo: 'HISTORIAL' },
     { ruta: '/fallidas', etiqueta: 'Fallidas por revisar', icono: 'report', modulo: 'FALLIDAS' },
     { ruta: '/auditoria', etiqueta: 'Auditoría', icono: 'policy', modulo: 'AUDITORIA' },
