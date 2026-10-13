@@ -7,8 +7,9 @@
 #   página web  MIGRADOR_PUERTO_FRONTEND  47843
 #   API         MIGRADOR_PUERTO_WEB       47880
 #   PostgreSQL  MIGRADOR_PUERTO_BD        47432
-# Por defecto solo escuchan en 127.0.0.1 (arquitectura 11.1). Para abrir la página a la red del servidor, poner
-# MIGRADOR_IP_PUBLICACION=0.0.0.0 (o la IP de la tarjeta interna) solo para el frontend.
+# Por defecto solo escuchan en 127.0.0.1 (arquitectura 11.1). Para abrir la página a la red del servidor:
+# MIGRADOR_IP_PUBLICACION=0.0.0.0. La API (MIGRADOR_IP_API) y la base (MIGRADOR_IP_BD) solo se abren si de verdad hace
+# falta: la página llega a la API por dentro de Docker.
 #
 # Imágenes: guajiranet/migrador-onu-{api,ejecutor,web}:<versión>. La versión sale de MIGRADOR_VERSION en el .env.
 # El nombre del proyecto (COMPOSE_PROJECT_NAME=migrador-onu en el .env) fija los volúmenes de la base de datos.
@@ -23,7 +24,7 @@ services:
       MIGRADOR_OWNER_PASSWORD: ${DATABASE_OWNER_PASSWORD:?Falta DATABASE_OWNER_PASSWORD en .env}
       MIGRADOR_APP_PASSWORD: ${DATABASE_APP_PASSWORD:?Falta DATABASE_APP_PASSWORD en .env}
     ports:
-      - "127.0.0.1:${MIGRADOR_PUERTO_BD:-47432}:5432"
+      - "${MIGRADOR_IP_BD:-127.0.0.1}:${MIGRADOR_PUERTO_BD:-47432}:5432"
     volumes:
       - migrador-pg:/var/lib/postgresql/data
       - ./docs/base-datos/inicializar-roles.sh:/docker-entrypoint-initdb.d/01-inicializar-roles.sh:ro
@@ -49,7 +50,7 @@ services:
       postgres:
         condition: service_healthy
     ports:
-      - "127.0.0.1:${MIGRADOR_PUERTO_WEB:-47880}:8080"
+      - "${MIGRADOR_IP_API:-127.0.0.1}:${MIGRADOR_PUERTO_WEB:-47880}:8080"
     volumes:
       - migrador-anclas:/var/lib/migrador/anclas
     healthcheck:
