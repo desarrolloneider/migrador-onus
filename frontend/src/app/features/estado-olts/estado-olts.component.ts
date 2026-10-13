@@ -17,11 +17,11 @@ interface Marca { marca: string; total: number; enLinea: number; }
 interface EstadoOlt {
   codigo: string; total: number; enLinea: number; fueraDeLinea: number; sinContrato: number; sinContratoEnLinea: number;
   accesoConsola: boolean; perfiles: Record<string, number> | null; conPerfilDestino: number | null; pendientes: number | null;
-  tarjetas: Tarjeta[]; marcas: Marca[];
+  tarjetas: Tarjeta[]; marcas: Marca[]; conVlanGestion: number; conVlanGestionEnLinea: number;
 }
 interface EstadoGeneral {
-  leidoEn: string; perfilDestino: string;
-  totales: { olts: number; total: number; enLinea: number; fueraDeLinea: number; sinContrato: number; conPerfilDestino: number; pendientes: number };
+  leidoEn: string; perfilDestino: string; vlanGestion: number;
+  totales: { olts: number; total: number; enLinea: number; fueraDeLinea: number; sinContrato: number; conPerfilDestino: number; pendientes: number; conVlanGestion: number };
   marcas: Marca[];
   olts: EstadoOlt[];
 }
@@ -64,6 +64,7 @@ const REFRESCO_MS = 60_000;
           <div class="total aviso"><span class="icono"><mat-icon>person_off</mat-icon></span><div><strong>{{ n(e.totales.sinContrato) }}</strong><span>sin contrato en Wispro</span></div></div>
           <div class="total destino"><span class="icono"><mat-icon>task_alt</mat-icon></span><div><strong>{{ n(e.totales.conPerfilDestino) }}</strong><span>ya en {{ e.perfilDestino }}</span></div></div>
           <div class="total pendiente"><span class="icono"><mat-icon>pending_actions</mat-icon></span><div><strong>{{ n(e.totales.pendientes) }}</strong><span>por cambiar y en línea</span></div></div>
+          <div class="total vlan" matTooltip="IP de gestión por DHCP en la VLAN de gestión, según SmartOLT"><span class="icono"><mat-icon>settings_ethernet</mat-icon></span><div><strong>{{ n(e.totales.conVlanGestion) }}</strong><span>con VLAN {{ e.vlanGestion }} de gestión</span></div></div>
         </section>
 
         <section class="por-marca">
@@ -154,6 +155,12 @@ const REFRESCO_MS = 60_000;
                   {{ o.accesoConsola ? 'No se pudieron leer los perfiles en la OLT en este momento.' : 'Perfiles no disponibles: la OLT no tiene acceso por consola.' }}</p>
               }
 
+              <div class="vlan-olt" [matTooltip]="'IP de gestión DHCP en VLAN ' + estado()!.vlanGestion + ' (SmartOLT). En línea con VLAN: ' + n(o.conVlanGestionEnLinea)">
+                <span class="vlan-titulo"><mat-icon>settings_ethernet</mat-icon> VLAN {{ estado()!.vlanGestion }}</span>
+                <span class="pista"><span class="relleno vlan-relleno" [style.width.%]="porcentaje(o.conVlanGestion, o.total)"></span></span>
+                <span class="cuenta"><strong>{{ n(o.conVlanGestion) }}</strong> / {{ n(o.total) }}</span>
+              </div>
+
               <details class="detalle">
                 <summary><mat-icon>expand_more</mat-icon> Por tarjeta y por marca (en línea / total)</summary>
                 <h3 class="sub">Tarjetas</h3>
@@ -204,7 +211,13 @@ const REFRESCO_MS = 60_000;
     .total strong { display: block; font-size: 24px; line-height: 1.1; font-variant-numeric: tabular-nums; }
     .total span { font-size: 12.5px; color: var(--mat-sys-on-surface-variant); }
     .total.exito { --c: var(--color-exito); } .total.neutro { --c: var(--color-neutro); } .total.aviso { --c: var(--color-aviso); }
-    .total.destino { --c: var(--color-simulado); } .total.pendiente { --c: var(--color-progreso); }
+    .total.destino { --c: var(--color-simulado); } .total.pendiente { --c: var(--color-progreso); } .total.vlan { --c: var(--color-info); }
+    .vlan-olt { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px; font-size: 12.5px; }
+    .vlan-titulo { display: inline-flex; align-items: center; gap: 4px; font-weight: 600; color: var(--color-info); }
+    .vlan-titulo mat-icon { font-size: 16px; width: 16px; height: 16px; }
+    .vlan-olt .cuenta { color: var(--mat-sys-on-surface-variant); font-variant-numeric: tabular-nums; }
+    .vlan-olt .cuenta strong { color: var(--mat-sys-on-surface); }
+    .vlan-relleno { background: var(--color-info) !important; }
 
     .controles { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
     .buscar { display: flex; align-items: center; gap: 8px; padding: 0 12px; height: 40px; border-radius: 999px; min-width: 240px;

@@ -110,6 +110,9 @@ export interface ConfirmarLoteRequest {
 /** Una ONU de una OLT con su estado (SmartOLT) y su perfil TR-069 real (leído en la OLT). */
 export interface OnuDeOlt {
   sn: string;
+  /** IP de gestión según SmartOLT ("Inactive", "DHCP"…) y su VLAN; la del NOC es DHCP en la VLAN 46. */
+  modoGestion: string | null;
+  vlanGestion: number | null;
   marca: string | null;
   modelo: string | null;
   tarjeta: string;

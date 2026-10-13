@@ -8,6 +8,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatSelectModule } from '@angular/material/select';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { Subject, Subscription, catchError, finalize, merge, of, switchMap, tap } from 'rxjs';
 import { mensajeDeError } from '../../../../core/api/errores';
@@ -22,7 +23,7 @@ import { OnusDeOlt } from '../../models/lote.model';
 @Component({
   selector: 'app-nuevo-lote',
   standalone: true,
-  imports: [ReactiveFormsModule, RouterLink, MatCheckboxModule, MatFormFieldModule, MatSelectModule, MatInputModule, MatButtonModule, MatIconModule, MatProgressBarModule],
+  imports: [ReactiveFormsModule, RouterLink, MatCheckboxModule, MatFormFieldModule, MatSelectModule, MatInputModule, MatButtonModule, MatIconModule, MatProgressBarModule, MatTooltipModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="pagina">
@@ -161,6 +162,13 @@ import { OnusDeOlt } from '../../models/lote.model';
                   </button>
                 }
               </div>
+              <div class="chips" role="group" aria-label="Filtrar por VLAN de gestión">
+                @for (g of filtrosGestion; track g.valor) {
+                  <button type="button" class="chip" [class.activo]="filtroGestion() === g.valor" (click)="filtroGestion.set(g.valor); pagina.set(0)">
+                    <mat-icon>{{ g.icono }}</mat-icon> {{ g.nombre }}
+                  </button>
+                }
+              </div>
               <div class="chips" role="group" aria-label="Filtrar por estado">
                 @for (e of estados; track e.valor) {
                   <button type="button" class="chip" [class.activo]="filtroEstado() === e.valor" (click)="filtroEstado.set(e.valor); pagina.set(0)">
@@ -205,7 +213,7 @@ import { OnusDeOlt } from '../../models/lote.model';
                 <thead><tr>
                   <th class="casilla"><mat-checkbox [checked]="todasVisiblesSeleccionadas()" [indeterminate]="algunasVisiblesSeleccionadas()"
                       (change)="$event.checked ? seleccionarVisibles() : quitarVisibles()" aria-label="Seleccionar las visibles" /></th>
-                  <th>Posición</th><th>SN</th><th>Marca / modelo</th><th>Estado</th><th>Perfil TR-069</th><th>IP</th>
+                  <th>Posición</th><th>SN</th><th>Marca / modelo</th><th>Estado</th><th>Perfil TR-069</th><th>VLAN {{ vlanGestion }}</th><th>IP</th>
                 </tr></thead>
                 <tbody>
                   @for (o of visiblesDePagina(); track o.tarjeta + '/' + o.pon + ':' + o.onuId) {
@@ -218,10 +226,14 @@ import { OnusDeOlt } from '../../models/lote.model';
                       <td><span class="estado-onu" [class.en-linea]="o.enLinea"><span class="punto"></span>{{ o.enLinea ? 'En línea' : 'Fuera de línea' }}</span></td>
                       <td><span class="perfil" [class.origen]="o.perfil === perfilOrigen" [class.destino]="o.perfil === perfilDestino" [class.sin]="!o.perfil">
                         @if (o.perfil === perfilDestino) { <mat-icon>check_circle</mat-icon> }{{ o.perfil ?? 'Sin perfil' }}</span></td>
+                      <td>
+                        @if (tieneGestion(o)) { <span class="vlan si" matTooltip="IP de gestión DHCP en VLAN {{ vlanGestion }}"><mat-icon>check_circle</mat-icon> DHCP</span> }
+                        @else { <span class="vlan no" [matTooltip]="'Gestión: ' + (o.modoGestion ?? 'sin dato') + (o.vlanGestion ? ' · VLAN ' + o.vlanGestion : '')"><mat-icon>remove_circle_outline</mat-icon> {{ o.modoGestion === 'Inactive' || !o.modoGestion ? 'Inactiva' : o.modoGestion }}</span> }
+                      </td>
                       <td class="mono ip">{{ o.ip ?? '—' }}</td>
                     </tr>
                   } @empty {
-                    <tr><td colspan="7" class="vacio"><mat-icon>search_off</mat-icon> No hay ONUs con esos filtros.</td></tr>
+                    <tr><td colspan="8" class="vacio"><mat-icon>search_off</mat-icon> No hay ONUs con esos filtros.</td></tr>
                   }
                 </tbody>
               </table>
@@ -293,6 +305,10 @@ import { OnusDeOlt } from '../../models/lote.model';
     .marca-onu { display: block; font-weight: 500; }
     .modelo { display: block; font-size: 12px; color: var(--mat-sys-on-surface-variant); }
     .ip { font-size: 12.5px; color: var(--mat-sys-on-surface-variant); }
+    .vlan { display: inline-flex; align-items: center; gap: 4px; font-size: 12.5px; white-space: nowrap; }
+    .vlan mat-icon { font-size: 15px; width: 15px; height: 15px; }
+    .vlan.si { color: var(--color-info); font-weight: 600; }
+    .vlan.no { color: var(--mat-sys-on-surface-variant); }
     .estado-onu { display: inline-flex; align-items: center; gap: 6px; }
     .estado-onu .punto { width: 8px; height: 8px; border-radius: 50%; background: var(--mat-sys-outline); }
     .estado-onu.en-linea .punto { background: #34c759; box-shadow: 0 0 0 3px color-mix(in srgb, #34c759 25%, transparent); }
@@ -371,6 +387,19 @@ export class NuevoLoteComponent {
   protected readonly perfiles = computed(() =>
     Object.entries(this.onusOlt()?.porPerfil ?? {}).map(([nombre, cantidad]) => ({ nombre, cantidad })));
   protected readonly Math = Math;
+  /** La VLAN de gestión del procedimiento del NOC (SmartOLT: IP de gestión por DHCP en la VLAN 46). */
+  protected readonly vlanGestion = 46;
+  protected readonly filtroGestion = signal<'TODAS' | 'CON' | 'SIN'>('TODAS');
+  protected readonly filtrosGestion = [
+    { valor: 'TODAS' as const, nombre: 'VLAN 46: todas', icono: 'settings_ethernet' },
+    { valor: 'SIN' as const, nombre: 'Sin VLAN 46', icono: 'remove_circle_outline' },
+    { valor: 'CON' as const, nombre: 'Con VLAN 46', icono: 'check_circle' },
+  ];
+
+  protected tieneGestion(o: { modoGestion: string | null; vlanGestion: number | null }): boolean {
+    return !!o.modoGestion && o.modoGestion.toLowerCase() !== 'inactive' && o.vlanGestion === this.vlanGestion;
+  }
+
   protected readonly estados = [
     { valor: 'TODOS' as const, nombre: 'Todas', icono: 'select_all' },
     { valor: 'EN_LINEA' as const, nombre: 'En línea', icono: 'wifi' },
@@ -408,11 +437,13 @@ export class NuevoLoteComponent {
   protected readonly visibles = computed(() => {
     const perfil = this.filtroPerfil();
     const estado = this.filtroEstado();
+    const gestion = this.filtroGestion();
     const tarjeta = this.tarjetaElegida();
     const pon = this.ponElegido();
     return this.visiblesPorMarca().filter((o) =>
       (perfil === null || (o.perfil ?? 'Sin perfil') === perfil)
       && (estado === 'TODOS' || (estado === 'EN_LINEA') === o.enLinea)
+      && (gestion === 'TODAS' || (gestion === 'CON') === this.tieneGestion(o))
       && (!tarjeta || o.tarjeta === tarjeta)
       && (pon === null || pon === undefined || String(pon) === '' || o.pon === Number(pon)));
   });

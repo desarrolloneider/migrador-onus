@@ -10,7 +10,17 @@ import java.util.Objects;
  * @param perfilTr069 el perfil actual si SmartOLT lo muestra (PC-09); {@code null} si no
  */
 public record OnuCandidate(String rawSn, String marca, String modelo, OnuPosition position, boolean enLinea,
-                           String ip, String perfilTr069) {
+                           String ip, String perfilTr069, GestionOnu gestion) {
+
+    /** Sin datos de gestión (VLAN de gestión, service-ports): {@code gestion} queda null. */
+    public OnuCandidate(String rawSn, String marca, String modelo, OnuPosition position, boolean enLinea, String ip, String perfilTr069) {
+        this(rawSn, marca, modelo, position, enLinea, ip, perfilTr069, null);
+    }
+
+    /** La misma ONU con otro perfil TR-069 (el leído en la OLT). */
+    public OnuCandidate conPerfil(String perfil) {
+        return new OnuCandidate(rawSn, marca, modelo, position, enLinea, ip, perfil, gestion);
+    }
 
     public OnuCandidate {
         if (rawSn == null || rawSn.isBlank()) {

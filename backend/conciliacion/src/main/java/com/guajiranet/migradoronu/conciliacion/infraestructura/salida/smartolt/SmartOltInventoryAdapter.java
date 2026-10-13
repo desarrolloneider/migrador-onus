@@ -129,7 +129,19 @@ public class SmartOltInventoryAdapter implements OnuInventoryPort {
         String perfil = texto(r, "tr069_profile");
         String modelo = texto(r, "onu_type_name");
         return Optional.of(new OnuCandidate(sn, marcaDe(sn, texto(r, "vendor", "brand")), modelo,
-                new OnuPosition(olt, "0/" + board, port, onu), enLinea, ip, perfil));
+                new OnuPosition(olt, "0/" + board, port, onu), enLinea, ip, perfil, gestion(r)));
+    }
+
+    /** VLAN de gestión, VLAN de los service-ports y TR-069 tal como los muestra SmartOLT. */
+    static com.guajiranet.migradoronu.conciliacion.dominio.GestionOnu gestion(JsonNode r) {
+        List<Integer> vlans = new java.util.ArrayList<>();
+        JsonNode puertos = r.get("service_ports");
+        if (puertos != null && puertos.isArray()) {
+            puertos.forEach(p -> Optional.ofNullable(entero(p, "vlan")).ifPresent(vlans::add));
+        }
+        String tr069 = texto(r, "tr069");
+        return new com.guajiranet.migradoronu.conciliacion.dominio.GestionOnu(texto(r, "mgmt_ip_mode"), entero(r, "mgmt_ip_vlan"),
+                vlans, tr069 != null && tr069.equalsIgnoreCase("Enabled"));
     }
 
     /**

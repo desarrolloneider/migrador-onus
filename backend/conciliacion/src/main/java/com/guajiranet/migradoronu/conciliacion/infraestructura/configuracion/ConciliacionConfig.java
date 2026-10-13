@@ -42,9 +42,9 @@ public class ConciliacionConfig {
     @Bean
     com.guajiranet.migradoronu.conciliacion.aplicacion.EstadoDeOlts estadoDeOlts(SmartOltInventoryAdapter smartOlt,
             WisproDirectoryAdapter wisproDirectorio, OltSettingsQueryPort olts, OltProfilesQueryPort perfilesOlt,
-            TargetProfilePort perfil, Clock reloj) {
+            TargetProfilePort perfil, Clock reloj, @Value("${MIGRADOR_VLAN_GESTION:46}") int vlanGestion) {
         return new com.guajiranet.migradoronu.conciliacion.aplicacion.EstadoDeOlts(smartOlt, wisproDirectorio, olts, perfilesOlt,
-                perfil::perfilDestino, reloj);
+                perfil::perfilDestino, reloj, vlanGestion);
     }
 
     @Bean

@@ -209,7 +209,7 @@ public class ClasificarOnusUseCase implements ClassifyOnusPort {
         }
         if (perfilesDeLaOlt.isPresent()) {
             String perfilEnOlt = perfilesDeLaOlt.get().get(pos.tarjeta() + "/" + pos.pon() + ":" + pos.onuId());
-            onu = new OnuCandidate(onu.rawSn(), onu.marca(), onu.modelo(), pos, onu.enLinea(), onu.ip(), perfilEnOlt);
+            onu = onu.conPerfil(perfilEnOlt);
         }
         List<Subscriber> contratos = onu.ip() == null ? List.of() : contratosPorIp.getOrDefault(onu.ip(), List.of());
         Subscriber contrato = contratos.size() == 1 ? contratos.getFirst() : null;

@@ -39,14 +39,14 @@ public class EstadoDeOlts {
      */
     public record Olt(String codigo, long total, long enLinea, long fueraDeLinea, long sinContrato, long sinContratoEnLinea,
                       boolean accesoConsola, Map<String, Long> perfiles, Long conPerfilDestino, Long pendientes,
-                      List<Tarjeta> tarjetas, List<Marca> marcas) {
+                      List<Tarjeta> tarjetas, List<Marca> marcas, long conVlanGestion, long conVlanGestionEnLinea) {
     }
 
     public record Totales(long olts, long total, long enLinea, long fueraDeLinea, long sinContrato, long conPerfilDestino,
-                          long pendientes) {
+                          long pendientes, long conVlanGestion) {
     }
 
-    public record Estado(Instant leidoEn, String perfilDestino, Totales totales, List<Marca> marcas, List<Olt> olts) {
+    public record Estado(Instant leidoEn, String perfilDestino, int vlanGestion, Totales totales, List<Marca> marcas, List<Olt> olts) {
     }
 
     private final OnuInventoryPort smartOlt;
@@ -55,9 +55,11 @@ public class EstadoDeOlts {
     private final OltProfilesQueryPort perfilesOlt;
     private final Supplier<String> perfilDestino;
     private final Clock reloj;
+    private final int vlanGestion;
 
     public EstadoDeOlts(OnuInventoryPort smartOlt, SubscriberDirectoryPort wispro, OltSettingsQueryPort olts,
-                        OltProfilesQueryPort perfilesOlt, Supplier<String> perfilDestino, Clock reloj) {
+                        OltProfilesQueryPort perfilesOlt, Supplier<String> perfilDestino, Clock reloj, int vlanGestion) {
+        this.vlanGestion = vlanGestion;
         this.smartOlt = Objects.requireNonNull(smartOlt, "smartOlt");
         this.wispro = Objects.requireNonNull(wispro, "wispro");
         this.olts = Objects.requireNonNull(olts, "olts");
@@ -114,8 +116,10 @@ public class EstadoDeOlts {
                     .map(e -> new Tarjeta(e.getKey(), e.getValue().size(), e.getValue().stream().filter(OnuCandidate::enLinea).count()))
                     .toList();
             List<Marca> marcas = porMarca(onus);
+            long conVlan = onus.stream().filter(this::tieneGestion).count();
+            long conVlanEnLinea = onus.stream().filter(o -> o.enLinea() && tieneGestion(o)).count();
             resultado.add(new Olt(codigo, onus.size(), enLinea, onus.size() - enLinea, sinContrato, sinContratoEnLinea,
-                    olts.consoleAccessConfigured(codigo), porPerfil, conDestino, pendientes, tarjetas, marcas));
+                    olts.consoleAccessConfigured(codigo), porPerfil, conDestino, pendientes, tarjetas, marcas, conVlan, conVlanEnLinea));
         });
         resultado.sort(Comparator.comparingLong(Olt::total).reversed());
 
@@ -125,8 +129,15 @@ public class EstadoDeOlts {
                 resultado.stream().mapToLong(Olt::fueraDeLinea).sum(),
                 resultado.stream().mapToLong(Olt::sinContrato).sum(),
                 resultado.stream().map(Olt::conPerfilDestino).filter(Objects::nonNull).mapToLong(Long::longValue).sum(),
-                resultado.stream().map(Olt::pendientes).filter(Objects::nonNull).mapToLong(Long::longValue).sum());
-        return new Estado(reloj.instant(), destino, totales, porMarca(todas), resultado);
+                resultado.stream().map(Olt::pendientes).filter(Objects::nonNull).mapToLong(Long::longValue).sum(),
+                resultado.stream().mapToLong(Olt::conVlanGestion).sum());
+        return new Estado(reloj.instant(), destino, vlanGestion, totales, porMarca(todas), resultado);
+    }
+
+    /** La gestión del procedimiento del NOC: IP de gestión por DHCP en la VLAN de gestión (46). */
+    private boolean tieneGestion(OnuCandidate o) {
+        return o.gestion() != null && o.gestion().gestionActiva() && o.gestion().vlanGestion() != null
+                && o.gestion().vlanGestion() == vlanGestion;
     }
 
     /** Total y en línea por marca, de la que más tiene a la que menos. */

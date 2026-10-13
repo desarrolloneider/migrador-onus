@@ -167,6 +167,23 @@ public class EjecutorDeOnus {
         }
         List<Long> grupo = List.copyOf(s.sinGuardar);
         s.sinGuardar.clear();
+        // Si la sesión se cayó (LOT-2026-000053: "invalid packet length"), se abre otra y se guarda de nuevo una vez:
+        // el save guarda toda la configuración en uso, así que los cambios de la sesión caída también quedan.
+        boolean guardo = intentarGuardar(s, grupo, loteId);
+        if (!guardo) {
+            s.descartar();
+            guardo = intentarGuardar(s, grupo, loteId);
+        }
+        if (!guardo) {
+            for (long id : grupo) {
+                cola.terminar(id, "FALLIDA", "P07", "FALLO_NO_GUARDADO",
+                        "El cambio quedó aplicado y verificado, pero la OLT no confirmó que guardó la configuración del grupo.");
+            }
+        }
+    }
+
+    /** Un save con su espera; registra el resultado en la auditoría. */
+    private boolean intentarGuardar(SesionOlt s, List<Long> grupo, Long loteId) {
         String respuesta;
         boolean guardo;
         try {
@@ -195,11 +212,6 @@ public class EjecutorDeOnus {
                 .mensaje(guardo ? "Configuración de " + s.olt() + " guardada para " + grupo.size() + " ONUs."
                         : "La OLT " + s.olt() + " no confirmó el guardado de " + grupo.size() + " ONUs.")
                 .build());
-        if (!guardo) {
-            for (long id : grupo) {
-                cola.terminar(id, "FALLIDA", "P07", "FALLO_NO_GUARDADO",
-                        "El cambio quedó aplicado y verificado, pero la OLT no confirmó que guardó la configuración del grupo.");
-            }
-        }
+        return guardo;
     }
 }
