@@ -11,8 +11,8 @@
 # MIGRADOR_IP_PUBLICACION=0.0.0.0 (o la IP de la tarjeta interna) solo para el frontend.
 #
 # Imágenes: guajiranet/migrador-onu-{api,ejecutor,web}:<versión>. La versión sale de MIGRADOR_VERSION en el .env.
-# El nombre del proyecto se fija para que los volúmenes (la base de datos) sean siempre los mismos.
-name: migrador-onu
+# El nombre del proyecto (COMPOSE_PROJECT_NAME=migrador-onu en el .env) fija los volúmenes de la base de datos.
+# Va en el .env y no aquí para que funcione también con docker-compose 1.x.
 
 services:
   postgres:
