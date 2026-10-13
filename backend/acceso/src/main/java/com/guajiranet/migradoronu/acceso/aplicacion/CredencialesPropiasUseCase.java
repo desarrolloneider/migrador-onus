@@ -76,9 +76,13 @@ public class CredencialesPropiasUseCase implements OwnCredentialsPort {
             if (existente.isEmpty()) {
                 long id = usuarios.insertar(Usuario.nuevo(nombre, "Administrador", huellas.huella(clave), reloj.instant()));
                 usuarios.cambiarCredenciales(id, nombre, usuarios.buscarPorId(id).orElseThrow().hashClave(), true);
-                registrar(id, nombre, "Usuario inicial " + nombre + " creado desde el .env; debe cambiar la contraseña al entrar.");
+                // El usuario inicial es el administrador: sin eso, en una instalación nueva nadie podría crear usuarios ni
+                // asignar módulos (antes solo lo eran los que ya existían cuando se agregaron los permisos).
+                usuarios.guardarPermisos(id, new com.guajiranet.migradoronu.acceso.dominio.Permisos(true, java.util.Set.of()));
+                registrar(id, nombre, "Usuario inicial " + nombre + " creado desde el .env como administrador; debe cambiar la contraseña al entrar.");
             } else if (existente.get().ultimoIngresoEn() == null) {
                 Usuario u = existente.get();
+                usuarios.guardarPermisos(u.id(), new com.guajiranet.migradoronu.acceso.dominio.Permisos(true, java.util.Set.of()));
                 usuarios.cambiarCredenciales(u.id(), nombre, huellas.huella(clave), true);
                 registrar(u.id(), nombre, "Contraseña inicial de " + nombre + " puesta desde el .env; debe cambiarla al entrar.");
             }
