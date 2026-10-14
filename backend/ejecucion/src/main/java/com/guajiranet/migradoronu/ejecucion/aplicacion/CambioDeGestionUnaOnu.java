@@ -50,6 +50,15 @@ public class CambioDeGestionUnaOnu {
         this.esperar = Objects.requireNonNull(esperar, "esperar");
     }
 
+    /** ¿SmartOLT muestra ahora la gestión DHCP en esa VLAN? Si no se puede leer, false. */
+    public boolean tieneGestionEn(String sn, int vlan) {
+        try {
+            return smartOlt.leer(sn).map(g -> g.tieneDhcpEn(vlan)).orElse(false);
+        } catch (RuntimeException e) {
+            return false;
+        }
+    }
+
     public Resultado ejecutar(TrabajoOnu t, int vlan, boolean real, Contexto ctx) {
         Registro r = new Registro(t, ctx);
         String posicion = t.oltCodigo() + " " + t.tarjeta() + "/" + t.pon() + " ONT " + t.onuId();
@@ -65,11 +74,16 @@ public class CambioDeGestionUnaOnu {
         }
         EstadoGestionOnu a = antes.get();
         r.paso("P03", "SmartOLT: leer ONU " + t.sn(), a.describir(), true, "Foto previa en SmartOLT: " + a.describir() + ".");
-        if (a.tieneDhcpEn(vlan)) {
-            return r.fin(real, Final.YA_TENIA, "P03", null, "La ONU ya tiene la IP de gestión DHCP en la VLAN " + vlan + ": no hay nada que cambiar.");
+        if (a.tieneDhcpEn(vlan) && a.tr069()) {
+            return r.fin(real, Final.YA_TENIA, "P03", null, "La ONU ya tiene la IP de gestión DHCP en la VLAN " + vlan
+                    + " y el TR-069 activo: no hay nada que cambiar.");
         }
         if (!a.enLinea()) {
             return r.fin(real, Final.EXCLUIDA, "P03", "EXC_FUERA_DE_LINEA", "La ONU está fuera de línea en SmartOLT: no se toca.");
+        }
+        if (a.tieneDhcpEn(vlan)) {
+            // Ya tiene la VLAN pero no el TR-069 (así quedaban antes): solo falta activarlo.
+            return conTr069(r, a, real, posicion, vlan);
         }
         String comando = "SmartOLT: IP de gestión DHCP, VLAN " + vlan + " (set_onu_mgmt_ip_dhcp " + a.idExterno() + ")";
         if (!real) {
@@ -84,8 +98,9 @@ public class CambioDeGestionUnaOnu {
             // No se sabe si quedó: se lee una vez antes de decir que falló.
             Optional<EstadoGestionOnu> ahora = leerSinFallar(t.sn());
             if (ahora.map(x -> x.tieneDhcpEn(vlan)).orElse(false)) {
-                return r.fin(true, Final.COMPLETADA, "P06", null, "SmartOLT respondió con error, pero la ONU quedó con la IP de gestión DHCP en la VLAN "
-                        + vlan + ": " + ahora.get().describir() + ".");
+                r.paso("P06", "SmartOLT: leer ONU " + t.sn(), ahora.get().describir(), true,
+                        "SmartOLT respondió con error, pero la ONU quedó con la IP de gestión DHCP en la VLAN " + vlan + ".");
+                return conTr069(r, ahora.get(), true, posicion, vlan);
             }
             return r.fin(true, Final.FALLIDA, "P05", "FALLO_OLT_RECHAZO", "SmartOLT no aplicó el cambio: " + e.getMessage());
         }
@@ -108,8 +123,42 @@ public class CambioDeGestionUnaOnu {
             return r.fin(true, Final.FALLIDA, "P06", "FALLO_VERIFICACION", "SmartOLT aceptó el cambio pero no lo muestra: "
                     + (despues == null ? "no se pudo leer la ONU" : despues.describir()) + ".");
         }
-        return r.fin(true, Final.COMPLETADA, "P06", null, "Gestión lista: " + posicion + " quedó con IP de gestión DHCP en la VLAN " + vlan
-                + ". En pocos minutos debería reportarse en GenieACS.");
+        return conTr069(r, despues, true, posicion, vlan);
+    }
+
+    /** El perfil TR-069 que SmartOLT activa por la IP de gestión (el mismo que se escoge a mano). */
+    static final String PERFIL_TR069_SMARTOLT = "SmartOLT";
+
+    /**
+     * P07: activar el TR-069 por la IP de gestión, como hace SmartOLT a mano ("TR069 Profile: SmartOLT vía IP de
+     * gestión"). Sin esto la ONU no pide IP por la VLAN. Si la OLT no tiene TR-069 en SmartOLT, se termina igual y se avisa.
+     */
+    private Resultado conTr069(Registro r, EstadoGestionOnu a, boolean real, String posicion, int vlan) {
+        String comando = "SmartOLT: TR-069 perfil " + PERFIL_TR069_SMARTOLT + " por IP de gestión (enable_tr069 " + a.idExterno() + ")";
+        if (!real) {
+            r.paso("SIM", comando, "", true, "Simulación: no se mandó.");
+            return r.fin(false, Final.SIMULADA, "P07", null, "Simulación terminada: la ONU cumple las condiciones; no se cambió nada.");
+        }
+        String aviso = "";
+        if (a.tr069()) {
+            r.paso("P07", comando, "", true, "El TR-069 ya estaba activo.");
+        } else {
+            try {
+                smartOlt.activarTr069(a.idExterno(), PERFIL_TR069_SMARTOLT);
+                r.paso("P07", comando, "OK", true, "SmartOLT activó el TR-069 por la IP de gestión.");
+            } catch (RuntimeException e) {
+                boolean sinTr069EnOlt = String.valueOf(e.getMessage()).toLowerCase(java.util.Locale.ROOT).contains("not enabled for this olt");
+                r.paso("P07", comando, String.valueOf(e.getMessage()), sinTr069EnOlt, sinTr069EnOlt
+                        ? "Esta OLT no tiene TR-069 en SmartOLT: queda solo la IP de gestión." : "SmartOLT no activó el TR-069.");
+                if (!sinTr069EnOlt) {
+                    return r.fin(true, Final.FALLIDA, "P07", "FALLO_OLT_RECHAZO", "La IP de gestión quedó en la VLAN " + vlan
+                            + ", pero SmartOLT no activó el TR-069: " + e.getMessage() + ". Vuelve a intentarlo.");
+                }
+                aviso = " (esta OLT no tiene TR-069 en SmartOLT)";
+            }
+        }
+        return r.fin(true, Final.COMPLETADA, "P07", null, "Gestión lista: " + posicion + " quedó con IP de gestión DHCP en la VLAN " + vlan
+                + " y TR-069 por la IP de gestión" + aviso + ". En pocos minutos debería tener IP y reportarse en GenieACS.");
     }
 
     private Optional<EstadoGestionOnu> leerSinFallar(String sn) {

@@ -15,7 +15,7 @@ export type ModoLote = 'LOTE' | 'INDIVIDUAL';
 export type GrupoVistaPrevia = 'ENTRA' | 'EXCLUIDA' | 'YA_TIENE_PERFIL';
 
 /** PERFIL_TR069: cambia el perfil en la OLT. VLAN_GESTION: pone la IP de gestión DHCP en la VLAN 46 en SmartOLT. */
-export type TipoLote = 'PERFIL_TR069' | 'VLAN_GESTION';
+export type TipoLote = 'PERFIL_TR069' | 'VLAN_GESTION' | 'SERVICIO_WAN';
 
 export interface FiltrosLote {
   marca: string;
@@ -119,6 +119,10 @@ export interface OnuDeOlt {
   /** IP de gestión según SmartOLT ("Inactive", "DHCP"…) y su VLAN; la del NOC es DHCP en la VLAN 46. */
   modoGestion: string | null;
   vlanGestion: number | null;
+  /** TR-069 por la IP de gestión activo en SmartOLT ("SmartOLT vía IP de gestión"). */
+  tr069?: boolean;
+  /** Ya terminó los 3 pasos (por la herramienta o según GenieACS): no se vuelve a meter al paso 1. */
+  tresPasosListos?: boolean;
   marca: string | null;
   modelo: string | null;
   tarjeta: string;

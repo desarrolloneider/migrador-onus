@@ -67,12 +67,24 @@ export const NOMBRES_PASO: Record<CodigoPaso, string> = {
   P08: 'Cerrar',
 };
 
+/** Los pasos de los lotes que no son de perfil (otros sistemas, otros nombres). */
+const PASOS_POR_TIPO: Record<string, Partial<Record<CodigoPaso, string>>> = {
+  VLAN_GESTION: { P03: 'Leer en SmartOLT', P05: 'Activar VLAN 46', P06: 'Verificar en SmartOLT' },
+  SERVICIO_WAN: { P03: 'Leer en GenieACS', P05: 'Cambiar X_HW_SERVICELIST', P06: 'Verificar en GenieACS', P07: 'Quitar VLAN 46',
+    P08: 'Volver a poner GUAJIRANET1' },
+};
+
+/** El nombre de un paso según el tipo de lote. */
+export function nombrePaso(codigo: CodigoPaso, tipo?: string | null): string {
+  return (tipo && PASOS_POR_TIPO[tipo]?.[codigo]) || NOMBRES_PASO[codigo];
+}
+
 export const SIMULACION: Presentacion = { etiqueta: 'Simulación', icono: 'science', tono: 'simulado' };
 export const INDIVIDUAL: Presentacion = { etiqueta: 'Individual', icono: 'person', tono: 'neutro' };
 
 /** Describe los filtros de un lote: "RIOHACHA01 · tarjeta 0/1 · PON 2". */
 export function describirFiltros(filtros: { olt: string | null; tarjeta: string | null; pon: number | null; tipo?: string }): string {
-  const tipo = filtros.tipo === 'VLAN_GESTION' ? 'Gestión VLAN 46 · ' : '';
+  const tipo = filtros.tipo === 'VLAN_GESTION' ? 'Gestión VLAN 46 · ' : filtros.tipo === 'SERVICIO_WAN' ? 'Servicio WAN · ' : '';
   if (!filtros.olt) {
     return tipo + 'Todas las OLT';
   }

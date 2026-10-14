@@ -50,19 +50,19 @@ public class HistorialController {
     }
 
     @GetMapping
-    public Pagina buscar(@RequestParam(required = false) String sn, @RequestParam(required = false) String olt,
+    public Pagina buscar(@RequestParam(required = false) String tipo, @RequestParam(required = false) String sn, @RequestParam(required = false) String olt,
                          @RequestParam(required = false) String tarjeta, @RequestParam(required = false) String resultado,
                          @RequestParam(required = false) String desde, @RequestParam(required = false) String hasta,
                          @RequestParam(defaultValue = "0") int pagina, @RequestParam(defaultValue = "25") int tamano) {
-        return historial.buscar(filtros(sn, olt, tarjeta, resultado, desde, hasta, pagina, Math.min(Math.max(tamano, 1), 500)));
+        return historial.buscar(filtros(tipo, sn, olt, tarjeta, resultado, desde, hasta, pagina, Math.min(Math.max(tamano, 1), 500)));
     }
 
     @GetMapping("/export")
-    public ResponseEntity<byte[]> exportar(@RequestParam(required = false) String sn, @RequestParam(required = false) String olt,
+    public ResponseEntity<byte[]> exportar(@RequestParam(required = false) String tipo, @RequestParam(required = false) String sn, @RequestParam(required = false) String olt,
                                            @RequestParam(required = false) String tarjeta, @RequestParam(required = false) String resultado,
                                            @RequestParam(required = false) String desde, @RequestParam(required = false) String hasta,
                                            @AuthenticationPrincipal UsuarioAutenticado quien, HttpServletRequest request) {
-        List<Entrada> entradas = historial.buscar(filtros(sn, olt, tarjeta, resultado, desde, hasta, 0, 50_000)).entradas();
+        List<Entrada> entradas = historial.buscar(filtros(tipo, sn, olt, tarjeta, resultado, desde, hasta, 0, 50_000)).entradas();
         String csv = Stream.concat(Stream.of("sn;ip;olt;tarjeta;pon;onu_id;resultado;revisada;codigo;motivo;lote;fecha"),
                         entradas.stream().map(e -> Stream.of(e.sn(), e.ip(), e.olt(), e.tarjeta(), texto(e.pon()), texto(e.onuId()),
                                 e.ultimoResultado(), texto(e.revisada()), e.codigo(), e.motivo(), e.loteNumero(), texto(e.actualizadoEn()))
@@ -82,8 +82,12 @@ public class HistorialController {
         return historial.intentos(sn.strip().toUpperCase());
     }
 
-    private static Filtros filtros(String sn, String olt, String tarjeta, String resultado, String desde, String hasta, int pagina, int tamano) {
-        return new Filtros(limpio(sn), limpio(olt), limpio(tarjeta), limpio(resultado), fecha(desde, false), fecha(hasta, true),
+    private static Filtros filtros(String tipo, String sn, String olt, String tarjeta, String resultado, String desde, String hasta, int pagina, int tamano) {
+        String paso = limpio(tipo);
+        if (paso != null && !List.of("VLAN_GESTION", "PERFIL_TR069", "SERVICIO_WAN").contains(paso)) {
+            throw ErrorDeNegocio.datosInvalidos("Paso inválido: " + paso + ".");
+        }
+        return new Filtros(paso, limpio(sn), limpio(olt), limpio(tarjeta), limpio(resultado), fecha(desde, false), fecha(hasta, true),
                 Math.max(pagina, 0), tamano);
     }
 

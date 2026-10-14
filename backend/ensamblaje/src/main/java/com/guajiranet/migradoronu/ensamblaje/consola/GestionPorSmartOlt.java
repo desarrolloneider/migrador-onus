@@ -45,7 +45,7 @@ public class GestionPorSmartOlt implements GestionSmartOltPort {
                 String id = Optional.ofNullable(texto(o, "unique_external_id")).orElse(texto(o, "sn"));
                 String vlan = texto(o, "mgmt_ip_vlan");
                 return Optional.of(new EstadoGestionOnu(id, "online".equalsIgnoreCase(texto(o, "status")), texto(o, "mgmt_ip_mode"),
-                        vlan == null ? null : Integer.valueOf(vlan), texto(o, "mgmt_ip_address")));
+                        vlan == null ? null : Integer.valueOf(vlan), texto(o, "mgmt_ip_address"), "Enabled".equalsIgnoreCase(texto(o, "tr069"))));
             }
         }
         return Optional.empty();
@@ -54,6 +54,21 @@ public class GestionPorSmartOlt implements GestionSmartOltPort {
     @Override
     public void activarDhcp(String idExterno, int vlan) {
         cliente().activarGestionDhcp(idExterno, vlan);
+    }
+
+    @Override
+    public void activarTr069(String idExterno, String perfil) {
+        cliente().activarTr069(idExterno, perfil);
+    }
+
+    @Override
+    public void reiniciar(String idExterno) {
+        cliente().reiniciar(idExterno);
+    }
+
+    @Override
+    public void desactivarGestion(String idExterno) {
+        cliente().desactivarGestion(idExterno);
     }
 
     /** 4857544347ADC1B3 se busca como HWTC47ADC1B3 (así lo escribe SmartOLT) y tal cual. */

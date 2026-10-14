@@ -33,6 +33,19 @@ public class EjecutorDeOnus {
     private final AuditTrailPort auditoria;
     private final CambioDeGestionUnaOnu gestion;
     private final int vlanGestion;
+    private CambioDeServicioWanUnaOnu servicio;
+    /** Cuántas ONUs de servicio WAN van a la vez en una OLT (casi todo es esperar a GenieACS). */
+    private volatile int servicioEnParalelo = 20;
+
+    public void servicioEnParalelo(int n) {
+        this.servicioEnParalelo = Math.max(1, n);
+    }
+
+    /** El cambio de servicio WAN (GenieACS); sin él, los lotes de ese tipo fallan con un mensaje claro. */
+    public EjecutorDeOnus conServicioWan(CambioDeServicioWanUnaOnu cambio) {
+        this.servicio = cambio;
+        return this;
+    }
 
     public EjecutorDeOnus(ColaDeEjecucionPort cola, OltConsoleFactoryPort consolas, CambioDePerfilUnaOnu cambio, String perfilOrigen,
                           AuditTrailPort auditoria, CambioDeGestionUnaOnu gestion, int vlanGestion) {
@@ -45,50 +58,55 @@ public class EjecutorDeOnus {
         this.auditoria = Objects.requireNonNull(auditoria, "auditoria");
     }
 
+    /** Una sesión quieta más de esto se cierra y se abre otra antes de usarla. */
+    static final long QUIETA_MAXIMO_MS = 120_000;
+
     /** La sesión de un hilo con una OLT y las ONUs ya cambiadas que esperan el próximo save. */
     public final class SesionOlt {
         private final String olt;
         private OltConsolePort real;
         private final List<Long> sinGuardar = new ArrayList<>();
+        /** Las ONUs de servicio WAN que van en paralelo en esta OLT. */
+        private final java.util.concurrent.Semaphore cupos;
+        private final int maximo;
 
-        private SesionOlt(String olt) {
+        private SesionOlt(String olt, int maximo) {
             this.olt = olt;
+            this.maximo = maximo;
+            this.cupos = new java.util.concurrent.Semaphore(maximo);
+        }
+
+        /** Espera a que terminen las ONUs que van en paralelo. */
+        private void esperarParalelas() {
+            try {
+                cupos.acquire(maximo);
+                cupos.release(maximo);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
         }
 
         public String olt() {
             return olt;
         }
 
-        /** La consola compartida: no se cierra al terminar una ONU y no se sale de la sesión con el último quit. */
+        /** La consola compartida por las ONUs de esta OLT (ver {@link ConsolaCompartida}): una por sesión. */
+        private ConsolaCompartida compartida;
+
+        /** Cuándo se usó la consola por última vez: la OLT cierra las sesiones quietas (el servicio WAN espera minutos). */
+        private long ultimoUso;
+
         private OltConsolePort compartida() {
+            long ahora = System.currentTimeMillis();
+            if (real != null && ahora - ultimoUso > QUIETA_MAXIMO_MS) {
+                descartar();
+            }
+            ultimoUso = ahora;
             if (real == null) {
                 real = consolas.abrir(olt);
+                compartida = new ConsolaCompartida(real);
             }
-            OltConsolePort consola = real;
-            return new OltConsolePort() {
-                @Override
-                public String ejecutar(String comando) {
-                    if (comando.strip().equals("quit") && !consola.prompt().contains("(config")) {
-                        return "";
-                    }
-                    return consola.ejecutar(comando);
-                }
-
-                @Override
-                public String prompt() {
-                    return consola.prompt();
-                }
-
-                @Override
-                public boolean esperarTexto(Pattern patron, java.time.Duration maximo) {
-                    return consola.esperarTexto(patron, maximo);
-                }
-
-                @Override
-                public void close() {
-                    // La cierra el ejecutor al terminar con la OLT.
-                }
-            };
+            return compartida;
         }
 
         private void descartar() {
@@ -99,12 +117,13 @@ public class EjecutorDeOnus {
                     // Ya estaba caída.
                 }
                 real = null;
+                compartida = null;
             }
         }
     }
 
     public SesionOlt nuevaSesion(String olt) {
-        return new SesionOlt(olt);
+        return new SesionOlt(olt, servicioEnParalelo);
     }
 
     /**
@@ -122,12 +141,30 @@ public class EjecutorDeOnus {
             ejecutarGestion(t);
             return true;
         }
+        if (t.esServicioWan()) {
+            // Con muchas ONUs en paralelo se guarda la OLT de vez en cuando, no solo al final.
+            synchronized (s) {
+                if (s.sinGuardar.size() >= Math.max(onusPorGuardado, s.maximo)) {
+                    guardar(s, t.loteId());
+                }
+            }
+            ejecutarServicioEnParalelo(t, s);
+            return true;
+        }
+        // La consola es de a una ONU: si hay ONUs de servicio WAN en paralelo en esta OLT, esperan su turno.
+        synchronized (s) {
+            return ejecutarPerfil(t, s, onusPorGuardado);
+        }
+    }
+
+    private boolean ejecutarPerfil(TrabajoOnu t, SesionOlt s, int onusPorGuardado) {
         boolean enGrupo = onusPorGuardado > 1 && t.guardar();
         try {
             String[] tarjeta = t.tarjeta().split("/");
             Objetivo objetivo = new Objetivo(t.oltCodigo(), Integer.parseInt(tarjeta[0].strip()), Integer.parseInt(tarjeta[1].strip()),
-                    t.pon(), t.onuId(), t.perfilesOrigen() == null ? List.of(perfilOrigen, CambioDePerfilUnaOnu.SIN_PERFIL) : t.perfilesOrigen(),
-                    t.perfilDestino(), t.guardar() && !enGrupo, false, t.sn());
+                    t.pon(), t.onuId(), t.perfilesOrigen() == null ? List.of(perfilOrigen, "SmartOLT", CambioDePerfilUnaOnu.SIN_PERFIL) : t.perfilesOrigen(),
+                    t.perfilDestino(), t.guardar() && !enGrupo, false, t.sn(),
+                    gestion == null ? null : () -> gestion.tieneGestionEn(t.sn(), vlanGestion));
             Contexto ctx = new Contexto(ActorType.PROCESO_EJECUTOR, t.confirmadoPor(), t.loteId(), t.ejecucionId(),
                     paso -> cola.avanzarPaso(t.ejecucionId(), paso));
             Resultado r = cambio.ejecutar(objetivo, !t.simulacion(), ctx, s::compartida);
@@ -175,10 +212,69 @@ public class EjecutorDeOnus {
         }
     }
 
+    /**
+     * Servicio WAN en paralelo: toma un cupo (espera si ya van todos) y la ONU sigue en su propio hilo. Lo que tarda es
+     * esperar a GenieACS; la consola de la OLT (P08) se usa de a una ONU, bloqueando la sesión.
+     */
+    private void ejecutarServicioEnParalelo(TrabajoOnu t, SesionOlt s) {
+        try {
+            s.cupos.acquire();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            cola.terminar(t.ejecucionId(), "FALLIDA", "P02", "FALLO_SISTEMA_NO_RESPONDE", "El ejecutor se detuvo antes de empezar la ONU.");
+            return;
+        }
+        Thread.ofVirtual().name("servicio-" + t.sn()).start(() -> {
+            try {
+                ejecutarServicio(t, s);
+            } finally {
+                s.cupos.release();
+            }
+        });
+    }
+
+    /** Lote de servicio WAN: GenieACS, SmartOLT y al final el perfil en la OLT (con la sesión de esta OLT). */
+    private void ejecutarServicio(TrabajoOnu t, SesionOlt s) {
+        try {
+            if (servicio == null) {
+                throw new IllegalStateException("El ejecutor no tiene configurado GenieACS.");
+            }
+            Contexto ctx = new Contexto(ActorType.PROCESO_EJECUTOR, t.confirmadoPor(), t.loteId(), t.ejecucionId(),
+                    paso -> cola.avanzarPaso(t.ejecucionId(), paso));
+            boolean diferir = t.guardar();
+            Resultado r = servicio.ejecutar(t, !t.simulacion(), ctx, s::compartida, s, diferir);
+            switch (r.fin()) {
+                case COMPLETADA, SIMULADA -> {
+                    cola.terminar(t.ejecucionId(), "COMPLETADA", r.paso(), null, r.mensaje());
+                    if (diferir && r.real()) {
+                        synchronized (s) {
+                            s.sinGuardar.add(t.ejecucionId());
+                        }
+                    }
+                }
+                case YA_TENIA, EXCLUIDA -> cola.terminar(t.ejecucionId(), "EXCLUIDA_AL_EJECUTAR", r.paso(), r.codigoFallo(), r.mensaje());
+                case FALLIDA -> {
+                    cola.terminar(t.ejecucionId(), "FALLIDA", r.paso(), r.codigoFallo(), r.mensaje());
+                    if ("P08".equals(r.paso())) {
+                        // Solo una falla en la consola puede dejar la sesión en mal estado.
+                        synchronized (s) {
+                            s.descartar();
+                        }
+                    }
+                }
+            }
+        } catch (RuntimeException e) {
+            cola.terminar(t.ejecucionId(), "FALLIDA", "P03", "FALLO_SISTEMA_NO_RESPONDE", "El ejecutor no pudo procesar la ONU: " + e.getMessage());
+        }
+    }
+
     /** Al terminar con la OLT (no quedan ONUs, parada o detención): guarda lo pendiente y cierra la sesión. */
     public void cerrar(SesionOlt s) {
-        guardar(s, null);
-        s.descartar();
+        s.esperarParalelas();
+        synchronized (s) {
+            guardar(s, null);
+            s.descartar();
+        }
     }
 
     /**

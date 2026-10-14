@@ -31,16 +31,25 @@ import { FiltrosHistorial, IntentoOnu, PaginaHistorial, ResultadoHistorial } fro
       <header class="encabezado">
         <div>
           <h1>Historial de ONUs</h1>
-          <p class="subtitulo">El último resultado de cada ONU que la herramienta intentó corregir. Sale de lo que guardan los lotes y no se edita a mano. Los lotes en simulación no cuentan como corregidas.</p>
+          <p class="subtitulo">El último resultado de cada ONU en cada paso del procedimiento. Sale de lo que guardan los lotes y no se edita a mano. Los lotes en simulación no cuentan como corregidas.</p>
         </div>
         <div class="acciones"><button mat-stroked-button (click)="exportar()" [disabled]="exportando()"><mat-icon>download</mat-icon> Exportar</button></div>
       </header>
+
+      <div class="pasos" role="tablist" aria-label="Paso del procedimiento">
+        @for (p of pasos; track p.valor) {
+          <button type="button" role="tab" class="paso" [class.activo]="formulario.controls.tipo.value === p.valor"
+                  [attr.aria-selected]="formulario.controls.tipo.value === p.valor" (click)="formulario.controls.tipo.setValue(p.valor)">
+            <mat-icon>{{ p.icono }}</mat-icon> {{ p.nombre }}
+          </button>
+        }
+      </div>
 
       <section class="rejilla-kpi">
         @for (r of resultados; track r) {
           <button type="button" class="kpi tono-{{ presentacion[r].tono }}" [class.activo]="formulario.controls.resultado.value === r" (click)="alternarResultado(r)"
                   [attr.aria-pressed]="formulario.controls.resultado.value === r">
-            <span class="etiqueta"><mat-icon>{{ presentacion[r].icono }}</mat-icon> {{ presentacion[r].etiqueta }}</span>
+            <span class="etiqueta"><mat-icon>{{ presentacion[r].icono }}</mat-icon> {{ etiqueta(r) }}</span>
             <span class="valor">{{ pagina()?.totales?.[r] ?? '—' }}</span>
           </button>
         }
@@ -80,7 +89,11 @@ import { FiltrosHistorial, IntentoOnu, PaginaHistorial, ResultadoHistorial } fro
                 <td class="secundario">{{ e.olt }} · {{ e.tarjeta ?? '—' }} · PON {{ e.pon ?? '—' }} · ID {{ e.onuId ?? '—' }}</td>
                 <td><a class="mono" [routerLink]="['/lotes', e.loteId]" (click)="$event.stopPropagation()">{{ e.loteNumero }}</a></td>
                 <td>{{ e.actualizadoEn | horaColombia }}</td>
-                <td class="mensaje">@if (e.codigo) { <span class="codigo-motivo">{{ e.codigo }}</span> } {{ e.motivo ?? '' }}</td>
+                <td class="mensaje">@if (e.ultimoResultado === 'FALLIDA' || e.ultimoResultado === 'EXCLUIDA') {
+                  <strong class="motivo-titulo">{{ explicar(e.codigo, e.motivo).titulo }}</strong>
+                  <span class="motivo-que-hacer">{{ explicar(e.codigo, e.motivo).queHacer }}</span>
+                  @if (e.motivo) { <span class="motivo-detalle">Detalle: {{ e.motivo }}</span> }
+                }</td>
               </tr>
               @if (abierto() === e.sn) {
                 <tr class="detalle-fila"><td colspan="7">
@@ -90,7 +103,7 @@ import { FiltrosHistorial, IntentoOnu, PaginaHistorial, ResultadoHistorial } fro
                       <li>
                         <app-estado-chip [presentacion]="presentacion[i.resultado]" compacto />
                         @if (i.simulacion) { <app-estado-chip [presentacion]="simulacion" compacto /> }
-                        <span>{{ i.fecha | horaColombia }}</span> · <a class="mono" [routerLink]="['/lotes', i.loteId]">{{ i.loteNumero }}</a>
+                        <span>{{ i.fecha | horaColombia }}</span> · <strong>{{ nombreDePaso(i.tipo) }}</strong> · <a class="mono" [routerLink]="['/lotes', i.loteId]">{{ i.loteNumero }}</a>
                         @if (i.paso) { · paso {{ i.paso }} }
                         @if (i.ejecucionId) { · <a [routerLink]="['/ejecuciones', i.ejecucionId]">ver detalle</a> }
                         @if (i.mensaje && i.resultado !== 'CORREGIDA') { <div class="secundario">{{ i.mensaje }}</div> }
@@ -110,6 +123,13 @@ import { FiltrosHistorial, IntentoOnu, PaginaHistorial, ResultadoHistorial } fro
     </div>
   `,
   styles: `
+    .mensaje .motivo-titulo { display: block; }
+    .mensaje .motivo-que-hacer, .mensaje .motivo-detalle { display: block; font-size: 12px; color: var(--mat-sys-on-surface-variant); }
+    .pasos { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 14px; }
+    .paso { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 999px; cursor: pointer; font: inherit;
+      border: 1px solid var(--mat-sys-outline-variant); background: transparent; color: var(--mat-sys-on-surface); }
+    .paso mat-icon { font-size: 18px; width: 18px; height: 18px; flex: 0 0 18px; }
+    .paso.activo { background: var(--mat-sys-primary-container); color: var(--mat-sys-on-primary-container); border-color: var(--mat-sys-primary); }
     .flecha { color: var(--mat-sys-on-surface-variant); }
     .intentos { list-style: none; padding: 0; margin: 8px 0 0; display: flex; flex-direction: column; gap: 8px; }
     .intentos li { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
@@ -123,9 +143,57 @@ export class HistorialComponent implements OnInit {
   protected readonly presentacion = RESULTADOS_HISTORIAL;
   protected readonly simulacion = SIMULACION;
   protected readonly resultados: ResultadoHistorial[] = ['CORREGIDA', 'FALLIDA', 'EXCLUIDA', 'YA_TENIA_PERFIL'];
+  protected readonly pasos = [
+    { valor: 'VLAN_GESTION', nombre: '1 · Gestión VLAN 46', icono: 'settings_ethernet' },
+    { valor: 'PERFIL_TR069', nombre: '2 · Perfil GUAJIRANET1', icono: 'router' },
+    { valor: 'SERVICIO_WAN', nombre: '3 · Servicio WAN', icono: 'swap_horiz' },
+  ];
+
+  protected nombreDePaso(tipo: string | null | undefined): string {
+    return this.pasos.find((p) => p.valor === (tipo ?? 'PERFIL_TR069'))?.nombre ?? '';
+  }
+
+  /** El motivo en palabras: qué pasó y qué hacer. El texto técnico queda como detalle. */
+  protected explicar(codigo: string | null, motivo: string | null): { titulo: string; queHacer: string } {
+    const m = motivo ?? '';
+    switch (codigo) {
+      case 'EXC_FUERA_DE_LINEA':
+        return { titulo: 'Estaba fuera de línea al ejecutar.', queHacer: 'No se tocó. Cuando vuelva a estar en línea, inclúyela en otro lote.' };
+      case 'FALLO_SISTEMA_NO_RESPONDE':
+        if (/GenieACS/i.test(m)) {
+          return { titulo: 'La ONU no se reporta a GenieACS.', queHacer: 'No recibió IP en la VLAN 46: revisa la VLAN 46 en su tarjeta/puerto de la OLT o reiníciala, y vuelve a intentarlo.' };
+        }
+        if (/sesi[oó]n|cerr[oó]/i.test(m)) {
+          return { titulo: 'Se cortó la conexión con la OLT.', queHacer: 'La OLT cerró la sesión antes de terminar. Vuelve a intentarlo en otro lote.' };
+        }
+        if (/no respondi[oó]/i.test(m)) {
+          return { titulo: 'La OLT no respondió a tiempo.', queHacer: 'La OLT estaba ocupada (por ejemplo guardando). Vuelve a intentarlo en unos minutos.' };
+        }
+        return { titulo: 'Un sistema no respondió.', queHacer: 'Vuelve a intentarlo en otro lote.' };
+      case 'FALLO_VERIFICACION':
+        return { titulo: 'El cambio no quedó aplicado.', queHacer: 'Al verificar, la OLT no mostró el perfil nuevo. Vuelve a intentarlo o revísala en la OLT.' };
+      case 'FALLO_FOTO_PREVIA':
+        return { titulo: 'No se pudo leer su estado antes de cambiarla.', queHacer: 'No se tocó. Revisa que exista en el sistema indicado y vuelve a intentarlo.' };
+      default:
+        if (codigo?.startsWith('EXC_')) {
+          return { titulo: 'Quedó por fuera al ejecutar.', queHacer: 'No se tocó. Mira el detalle.' };
+        }
+        return { titulo: 'Falló.', queHacer: 'Mira el detalle y vuelve a intentarlo.' };
+    }
+  }
+
+  /** "Ya tenía el perfil" dice lo que corresponde a cada paso. */
+  protected etiqueta(r: ResultadoHistorial): string {
+    if (r !== 'YA_TENIA_PERFIL') {
+      return this.presentacion[r].etiqueta;
+    }
+    const tipo = this.formulario.controls.tipo.value;
+    return tipo === 'VLAN_GESTION' ? 'Ya tenía la VLAN 46' : tipo === 'SERVICIO_WAN' ? 'Ya tenía el servicio' : 'Ya tenía el perfil';
+  }
+
   protected readonly olts = toSignal(inject(ConfiguracionService).listarOlts(), { initialValue: [] });
   protected readonly formulario = inject(FormBuilder).group({
-    sn: [''], olt: [null as string | null], tarjeta: [''], resultado: [null as ResultadoHistorial | null], desde: [''], hasta: [''],
+    tipo: ['PERFIL_TR069'], sn: [''], olt: [null as string | null], tarjeta: [''], resultado: [null as ResultadoHistorial | null], desde: [''], hasta: [''],
   });
 
   protected readonly pagina = signal<PaginaHistorial | null>(null);
@@ -158,7 +226,7 @@ export class HistorialComponent implements OnInit {
   }
 
   protected limpiar(): void {
-    this.formulario.reset({ sn: '', olt: null, tarjeta: '', resultado: null, desde: '', hasta: '' });
+    this.formulario.reset({ tipo: this.formulario.controls.tipo.value, sn: '', olt: null, tarjeta: '', resultado: null, desde: '', hasta: '' });
   }
 
   protected cambiarPagina(evento: PageEvent): void {
@@ -187,7 +255,7 @@ export class HistorialComponent implements OnInit {
 
   private filtros(): FiltrosHistorial {
     const v = this.formulario.getRawValue();
-    return { sn: v.sn, olt: v.olt, tarjeta: v.tarjeta, resultado: v.resultado, desde: v.desde, hasta: v.hasta,
+    return { tipo: v.tipo, sn: v.sn, olt: v.olt, tarjeta: v.tarjeta, resultado: v.resultado, desde: v.desde, hasta: v.hasta,
       pagina: this.numeroPagina(), tamano: this.tamano() };
   }
 }

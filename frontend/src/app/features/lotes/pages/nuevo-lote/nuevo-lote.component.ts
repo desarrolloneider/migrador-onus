@@ -50,8 +50,10 @@ import { OnusDeOlt, TipoLote } from '../../models/lote.model';
 
       <div class="disposicion">
         <form class="tarjeta" [formGroup]="formulario" (ngSubmit)="armar()">
-          <h2><mat-icon>tune</mat-icon> Qué ONUs</h2>
-          <div class="tipos" role="radiogroup" aria-label="Qué cambia el lote">
+          <h2><mat-icon>tune</mat-icon> Qué hacer</h2>
+          <p class="intro-pasos">El procedimiento para que las ONUs queden administradas desde GenieACS tiene <strong>3 pasos, en orden</strong>.
+            Cada ONU pasa por los tres. Al terminar un lote, en su resumen aparece el botón para seguir con el paso siguiente usando las mismas ONUs.</p>
+          <div class="tipos" role="radiogroup" aria-label="Qué paso hacer">
             @for (t of tipos; track t.valor) {
               <button type="button" class="tipo" role="radio" [attr.aria-checked]="tipo() === t.valor" [class.activo]="tipo() === t.valor"
                       (click)="escogerTipo(t.valor)">
@@ -63,10 +65,9 @@ import { OnusDeOlt, TipoLote } from '../../models/lote.model';
           <mat-form-field class="ancho-completo">
             <mat-label>Marca</mat-label>
             <mat-select formControlName="marca">
-              <mat-option value="TODAS">Todas las marcas</mat-option>
               @for (m of marcas; track m.valor) { <mat-option [value]="m.valor">{{ m.nombre }}</mat-option> }
             </mat-select>
-            <mat-hint>Con una marca, solo entran ONUs de esa marca. El cambio lo hace la OLT Huawei.</mat-hint>
+            <mat-hint>El procedimiento es solo para ONUs Huawei (las MONU… con SN HWTC no cuentan).</mat-hint>
           </mat-form-field>
 
           <mat-form-field class="ancho-completo">
@@ -108,11 +109,9 @@ import { OnusDeOlt, TipoLote } from '../../models/lote.model';
           @if (armando()) {
             <div class="avance" role="status">
               <mat-progress-bar mode="indeterminate" />
-              <ul>
-                @for (mensaje of avance(); track $index; let ultimo = $last) {
-                  <li [class.actual]="ultimo"><mat-icon>{{ ultimo ? 'pending' : 'check' }}</mat-icon> {{ mensaje }}</li>
-                }
-              </ul>
+              <p class="avance-linea"><mat-icon>hourglass_top</mat-icon>
+                <span>{{ avance().length ? avance()[avance().length - 1] : 'Armando la vista previa: leyendo SmartOLT' + (tipo() === 'PERFIL_TR069' ? ' y la OLT' : '') + '…' }}</span>
+                <span class="segundos">{{ segundosArmando() }} s</span></p>
             </div>
           }
 
@@ -122,16 +121,30 @@ import { OnusDeOlt, TipoLote } from '../../models/lote.model';
         </form>
 
         <aside class="tarjeta guia">
-          <h2><mat-icon>info</mat-icon> Cómo se arma</h2>
-          <ol>
-            <li><strong>SmartOLT:</strong> SN, posición, estado e IP de cada ONU. Si la descarga queda incompleta, no se arma nada.</li>
-            <li><strong>La OLT:</strong> el perfil TR-069 real. Entran las que tienen GUAJIRANET y las que no tienen perfil; las de GUAJIRANET1 van a "ya tienen el perfil" y las de otro perfil quedan fuera.</li>
-            <li><strong>Wispro, por IP:</strong> si la ONU tiene contrato se muestra el cliente; si no, entra igual (solo se exige que esté en línea).</li>
-            <li><strong>Tres grupos:</strong> entran, quedan fuera (cada una con su motivo) y ya tienen el perfil.</li>
-            <li><strong>Hasta {{ maximo }} ONUs por lote.</strong> Varias OLT avanzan a la vez y se guarda cada 10 ONUs.</li>
-            <li><strong>La vista previa vence a las 4 horas</strong> sin confirmar y queda descartada, sin borrar nada.</li>
+          <div class="cadena-pasos" aria-hidden="true">
+            @for (t of tipos; track t.valor; let i = $index; let ultimo = $last) {
+              <span class="eslabon" [class.actual]="tipo() === t.valor">{{ i + 1 }}</span>
+              @if (!ultimo) { <span class="union"></span> }
+            }
+          </div>
+          @if (explicacion(); as e) {
+            <h2><mat-icon>{{ e.icono }}</mat-icon> {{ e.titulo }}</h2>
+            <h3>Para qué sirve</h3>
+            <p>{{ e.para }}</p>
+            <h3>Qué hace en cada ONU</h3>
+            <ol>@for (p of e.hace; track p) { <li>{{ p }}</li> }</ol>
+            <h3>Qué ONUs entran</h3>
+            <p>{{ e.entran }}</p>
+            <h3>Después</h3>
+            <p>{{ e.despues }}</p>
+          }
+          <h3>Siempre</h3>
+          <ul class="siempre">
             <li><strong>Fuera de línea nunca se toca.</strong></li>
-          </ol>
+            <li>Primero <strong>Simular</strong>: muestra qué se haría sin cambiar nada.</li>
+            <li>Hasta {{ maximo }} ONUs por lote; la vista previa vence a las 4 horas.</li>
+            <li>Todo queda en la auditoría, con quién lo hizo.</li>
+          </ul>
         </aside>
       </div>
 
@@ -154,9 +167,19 @@ import { OnusDeOlt, TipoLote } from '../../models/lote.model';
             <div class="resumen-onus">
               <div class="dato"><mat-icon>lan</mat-icon><strong>{{ visiblesPorMarca().length }}</strong><span>ONUs{{ marcaElegida() ? ' ' + marcaElegida() : '' }}</span></div>
               <div class="dato en-linea"><mat-icon>wifi</mat-icon><strong>{{ enLineaPorMarca() }}</strong><span>en línea</span></div>
-              <div class="dato pendientes"><mat-icon>pending_actions</mat-icon><strong>{{ pendientesPorMarca() }}</strong><span>por cambiar y en línea</span></div>
-              <div class="dato listas"><mat-icon>task_alt</mat-icon><strong>{{ listasPorMarca() }}</strong><span>ya en {{ perfilDestino }}</span></div>
+              <div class="dato pendientes"><mat-icon>pending_actions</mat-icon><strong>{{ pendientesPorMarca() }}</strong><span>{{ textosResumen().pendientes }}</span></div>
+              <div class="dato listas"><mat-icon>task_alt</mat-icon><strong>{{ listasPorMarca() }}</strong><span>{{ textosResumen().listas }}</span></div>
             </div>
+
+            @if (tipo() === 'PERFIL_TR069' && listasSinPerfil().length) {
+              <div class="revisar-listas">
+                <mat-icon>rule</mat-icon>
+                <span><strong>{{ listasSinPerfil().length }}</strong> ONU(s) ya tienen los 3 pasos listos pero en la OLT no tienen {{ perfilDestino }}.</span>
+                <button mat-stroked-button type="button" (click)="revisarListas()" [disabled]="armando()">
+                  <mat-icon>build</mat-icon> Revisar perfil de las ya listas
+                </button>
+              </div>
+            }
 
             <div class="filtros">
               <div class="chips" role="group" aria-label="Filtrar por perfil">
@@ -236,7 +259,8 @@ import { OnusDeOlt, TipoLote } from '../../models/lote.model';
                       <td><span class="perfil" [class.origen]="o.perfil === perfilOrigen" [class.destino]="o.perfil === perfilDestino" [class.sin]="!o.perfil">
                         @if (o.perfil === perfilDestino) { <mat-icon>check_circle</mat-icon> }{{ o.perfil ?? 'Sin perfil' }}</span></td>
                       <td>
-                        @if (tieneGestion(o)) { <span class="vlan si" matTooltip="IP de gestión DHCP en VLAN {{ vlanGestion }}"><mat-icon>check_circle</mat-icon> DHCP</span> }
+                        @if (o.tresPasosListos) { <span class="vlan si" matTooltip="Ya terminó los 3 pasos (TR069_INTERNET en GenieACS)"><mat-icon>verified</mat-icon> 3 pasos listos</span> }
+                        @else if (tieneGestion(o)) { <span class="vlan si" matTooltip="IP de gestión DHCP en VLAN {{ vlanGestion }}"><mat-icon>check_circle</mat-icon> DHCP</span> }
                         @else { <span class="vlan no" [matTooltip]="'Gestión: ' + (o.modoGestion ?? 'sin dato') + (o.vlanGestion ? ' · VLAN ' + o.vlanGestion : '')"><mat-icon>remove_circle_outline</mat-icon> {{ o.modoGestion === 'Inactive' || !o.modoGestion ? 'Inactiva' : o.modoGestion }}</span> }
                       </td>
                       <td class="mono ip">{{ o.ip ?? '—' }}</td>
@@ -348,22 +372,39 @@ import { OnusDeOlt, TipoLote } from '../../models/lote.model';
     @media (max-width: 520px) { .fila { grid-template-columns: 1fr; } }
     .nota-opcion { color: var(--mat-sys-on-surface-variant); font-size: 12px; }
     .acciones { display: flex; justify-content: flex-end; }
+    .revisar-listas { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 8px 0 12px; padding: 10px 14px; border-radius: 12px;
+      border: 1px solid var(--mat-sys-outline-variant); background: color-mix(in srgb, var(--mat-sys-primary) 6%, transparent); font-size: 13px; }
+    .revisar-listas > mat-icon { color: var(--mat-sys-primary); }
+    .revisar-listas button { margin-left: auto; }
+    .avance-linea { display: flex; align-items: center; gap: 8px; margin: 10px 0 0; font-size: 13px; color: var(--mat-sys-on-surface-variant); }
+    .avance-linea mat-icon { font-size: 18px; width: 18px; height: 18px; color: var(--color-progreso); }
+    .avance-linea .segundos { margin-left: auto; font-variant-numeric: tabular-nums; }
     .avance ul { list-style: none; padding: 0; margin: 12px 0 0; display: flex; flex-direction: column; gap: 6px; }
     .avance li { display: flex; align-items: center; gap: 8px; color: var(--mat-sys-on-surface-variant); font-size: 13px; }
     .avance li mat-icon { font-size: 18px; width: 18px; height: 18px; color: var(--color-exito); }
     .avance li.actual { color: var(--mat-sys-on-surface); font-weight: 500; }
     .avance li.actual mat-icon { color: var(--color-progreso); }
-    .tipos { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .tipos { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+    @media (max-width: 900px) { .tipos { grid-template-columns: 1fr; } }
     @media (max-width: 600px) { .tipos { grid-template-columns: 1fr; } }
     .tipo { display: flex; gap: 10px; align-items: flex-start; text-align: left; padding: 12px; border-radius: 14px; cursor: pointer;
       border: 1px solid var(--mat-sys-outline-variant); background: transparent; color: inherit; font: inherit; transition: border-color .15s ease, background .15s ease; }
     .tipo:hover { border-color: var(--mat-sys-primary); }
     .tipo.activo { border-color: var(--mat-sys-primary); background: color-mix(in srgb, var(--mat-sys-primary) 10%, transparent);
       box-shadow: inset 0 0 0 1px var(--mat-sys-primary); }
-    .tipo mat-icon { color: var(--mat-sys-primary); }
+    .tipo mat-icon { color: var(--mat-sys-primary); flex: 0 0 24px; width: 24px; height: 24px; overflow: visible; }
     .tipo span { display: flex; flex-direction: column; gap: 2px; }
     .tipo small { color: var(--mat-sys-on-surface-variant); font-size: 12px; line-height: 1.35; }
-    .guia ol { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 10px; line-height: 1.45; }
+    .guia ol, .guia ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; line-height: 1.45; font-size: 13.5px; }
+    .guia h2 { margin: 12px 0 4px; }
+    .guia h3 { margin: 12px 0 4px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--mat-sys-on-surface-variant); }
+    .guia p { margin: 0; font-size: 13.5px; line-height: 1.5; }
+    .intro-pasos { margin: -4px 0 0; font-size: 13.5px; line-height: 1.5; color: var(--mat-sys-on-surface-variant); }
+    .cadena-pasos { display: flex; align-items: center; }
+    .eslabon { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; font-size: 13px;
+      border: 2px solid var(--mat-sys-outline-variant); color: var(--mat-sys-on-surface-variant); }
+    .eslabon.actual { background: var(--mat-sys-primary); border-color: var(--mat-sys-primary); color: var(--mat-sys-on-primary); }
+    .union { flex: 1; height: 2px; background: var(--mat-sys-outline-variant); }
   `,
 })
 export class NuevoLoteComponent {
@@ -375,12 +416,9 @@ export class NuevoLoteComponent {
   protected readonly maximo = 1000;
 
   /** Marcas de ONU vistas en SmartOLT. El cambio lo hace la OLT Huawei, así que todas pueden entrar. */
-  protected readonly marcas = [
-    { valor: 'Huawei', nombre: 'Huawei' }, { valor: 'ZTE', nombre: 'ZTE' }, { valor: 'Optictimes', nombre: 'Optictimes' },
-    { valor: 'FiberHome', nombre: 'FiberHome' }, { valor: 'TP-Link', nombre: 'TP-Link' }, { valor: 'Genérica GPON', nombre: 'Genérica GPON' },
-  ];
+  protected readonly marcas = [{ valor: 'Huawei', nombre: 'Huawei' }];
   protected readonly formulario = inject(FormBuilder).group({
-    marca: ['TODAS', Validators.required],
+    marca: ['Huawei', Validators.required],
     olt: [null as string | null],
     tarjeta: [{ value: null as string | null, disabled: true }],
     pon: [{ value: null as number | null, disabled: true }, Validators.min(0)],
@@ -399,7 +437,7 @@ export class NuevoLoteComponent {
   protected readonly cargandoOnus = signal(false);
   protected readonly errorOnus = signal<string | null>(null);
   protected readonly filtroPerfil = signal<string | null>(null);
-  protected readonly filtroEstado = signal<'TODOS' | 'EN_LINEA' | 'FUERA'>('TODOS');
+  protected readonly filtroEstado = signal<'TODOS' | 'EN_LINEA' | 'FUERA'>('EN_LINEA');
   private readonly tarjetaElegida = toSignal(this.formulario.controls.tarjeta.valueChanges, { initialValue: null });
   private readonly ponElegido = toSignal(this.formulario.controls.pon.valueChanges, { initialValue: null });
   private readonly recarga = new Subject<string>();
@@ -408,7 +446,7 @@ export class NuevoLoteComponent {
   protected readonly Math = Math;
   /** La VLAN de gestión del procedimiento del NOC (SmartOLT: IP de gestión por DHCP en la VLAN 46). */
   protected readonly vlanGestion = 46;
-  protected readonly filtroGestion = signal<'TODAS' | 'CON' | 'SIN'>('TODAS');
+  protected readonly filtroGestion = signal<'TODAS' | 'CON' | 'SIN'>('SIN');
   protected readonly filtrosGestion = [
     { valor: 'TODAS' as const, nombre: 'VLAN 46: todas', icono: 'settings_ethernet' },
     { valor: 'SIN' as const, nombre: 'Sin VLAN 46', icono: 'remove_circle_outline' },
@@ -420,18 +458,50 @@ export class NuevoLoteComponent {
   }
 
   protected readonly tipos = [
-    { valor: 'PERFIL_TR069' as TipoLote, nombre: 'Perfil TR-069', icono: 'router',
-      descripcion: 'Pone GUAJIRANET1 en la OLT (por consola).' },
-    { valor: 'VLAN_GESTION' as TipoLote, nombre: 'Gestión VLAN 46', icono: 'settings_ethernet',
-      descripcion: 'IP de gestión DHCP en la VLAN 46 en SmartOLT, para que llegue a GenieACS. Necesita GUAJIRANET1.' },
+    { valor: 'VLAN_GESTION' as TipoLote, nombre: '1 · Gestión VLAN 46', icono: 'settings_ethernet',
+      descripcion: 'IP de gestión DHCP en la VLAN 46 en SmartOLT. Va primero: SmartOLT le deja su perfil "SmartOLT".' },
+    { valor: 'PERFIL_TR069' as TipoLote, nombre: '2 · Perfil TR-069', icono: 'router',
+      descripcion: 'Pone GUAJIRANET1 en la OLT (por consola), también encima del perfil "SmartOLT", para que llegue a GenieACS.' },
+    { valor: 'SERVICIO_WAN' as TipoLote, nombre: '3 · Servicio WAN', icono: 'swap_horiz',
+      descripcion: 'GenieACS: INTERNET → TR069_INTERNET y TR069 → OTHER; luego quita la VLAN 46 y vuelve a poner GUAJIRANET1.' },
   ];
-  protected readonly tipo = signal<TipoLote>('PERFIL_TR069');
+  protected readonly tipo = signal<TipoLote>('VLAN_GESTION');
+
+  /** La explicación del paso escogido, en palabras sencillas, para quien no conoce el procedimiento. */
+  private readonly explicaciones: Record<TipoLote, { titulo: string; icono: string; para: string; hace: string[]; entran: string; despues: string }> = {
+    VLAN_GESTION: {
+      titulo: 'Paso 1 · Gestión VLAN 46', icono: 'settings_ethernet',
+      para: 'Le abre a la ONU un camino propio (la VLAN 46) para hablar con GenieACS, sin tocar el internet del cliente.',
+      hace: ['Revisa en SmartOLT que esté en línea y que todavía no tenga la VLAN 46.', 'En SmartOLT: IP de gestión por DHCP en la VLAN 46.',
+        'Verifica en SmartOLT que quedó así.'],
+      entran: 'Las ONUs en línea que aún no tienen la VLAN 46. SmartOLT les deja su propio perfil TR-069 ("SmartOLT"): es normal, lo arregla el paso 2.',
+      despues: 'Al terminar, en el resumen del lote: "Continuar con el paso 2" con las mismas ONUs.',
+    },
+    PERFIL_TR069: {
+      titulo: 'Paso 2 · Perfil TR-069', icono: 'router',
+      para: 'Le dice a la ONU a qué servidor reportarse: GUAJIRANET1 apunta a GenieACS de GuajiraNet (en lugar del de SmartOLT).',
+      hace: ['Lee en la OLT el perfil que tiene la ONU.', 'Le pone GUAJIRANET1 por consola y lo verifica.', 'Guarda la configuración de la OLT.'],
+      entran: 'Las ONUs en línea sin GUAJIRANET1: sin perfil, con GUAJIRANET o con el perfil "SmartOLT" que dejó el paso 1.',
+      despues: 'En uno o dos minutos la ONU empieza a reportarse en GenieACS. En el resumen: "Continuar con el paso 3".',
+    },
+    SERVICIO_WAN: {
+      titulo: 'Paso 3 · Servicio WAN', icono: 'swap_horiz',
+      para: 'Hace que la ONU se reporte a GenieACS por el internet del cliente (ya no necesita la VLAN 46) y deja todo limpio.',
+      hace: ['Lee en vivo en GenieACS cómo están sus conexiones.', 'Cambia INTERNET → TR069_INTERNET y TR069 → OTHER (si ya estaba, no lo toca).',
+        'Verifica en GenieACS (puede tardar unos minutos).', 'Quita la VLAN 46 en SmartOLT.', 'Vuelve a ponerle GUAJIRANET1 en la OLT (SmartOLT se lo quita).'],
+      entran: 'Las ONUs en línea que tienen la VLAN 46 (pasos 1 y 2 hechos). Si una no responde a GenieACS, no se toca y queda para reintentar.',
+      despues: 'Listo: la ONU queda administrada desde GenieACS por la IP de servicio, sin VLAN 46 y con GUAJIRANET1.',
+    },
+  };
+  protected readonly explicacion = computed(() => this.explicaciones[this.tipo()]);
 
   protected escogerTipo(valor: TipoLote): void {
     this.tipo.set(valor);
     this.seleccionadas.set(new Set());
-    this.filtroPerfil.set(valor === 'VLAN_GESTION' ? this.perfilDestino : null);
-    this.filtroGestion.set(valor === 'VLAN_GESTION' ? 'SIN' : 'TODAS');
+    this.filtroPerfil.set(null);
+    this.filtroGestion.set(valor === 'VLAN_GESTION' ? 'SIN' : valor === 'SERVICIO_WAN' ? 'CON' : 'TODAS');
+    // Fuera de línea nunca se toca: los pasos arrancan mostrando solo las que están en línea.
+    this.filtroEstado.set('EN_LINEA');
     this.pagina.set(0);
   }
 
@@ -457,6 +527,14 @@ export class NuevoLoteComponent {
   });
   protected readonly enLineaPorMarca = computed(() => this.visiblesPorMarca().filter((o) => o.enLinea).length);
   protected readonly pendientesPorMarca = computed(() => this.visiblesPorMarca().filter((o) => o.enLinea && this.seleccionable(o)).length);
+  /** Los dos contadores del resumen dicen lo que cuenta el paso escogido. */
+  protected readonly textosResumen = computed(() => {
+    switch (this.tipo()) {
+      case 'VLAN_GESTION': return { pendientes: 'en línea sin VLAN 46 (por hacer)', listas: 'ya con VLAN 46' };
+      case 'SERVICIO_WAN': return { pendientes: 'en línea con VLAN 46 (listas para el paso 3)', listas: 'sin VLAN 46 (falta el paso 1)' };
+      default: return { pendientes: 'en línea sin ' + this.perfilDestino + ' (por hacer)', listas: 'ya en ' + this.perfilDestino };
+    }
+  });
   protected readonly listasPorMarca = computed(() => this.visiblesPorMarca().filter((o) => !this.seleccionable(o)).length);
   protected readonly pagina = signal(0);
   protected readonly porPagina = signal(50);
@@ -519,14 +597,15 @@ export class NuevoLoteComponent {
       return { icono: 'hourglass_top', texto: 'Armando la vista previa: leyendo SmartOLT, la OLT y Wispro…' };
     }
     if (!this.oltElegida()) {
-      return { icono: 'lan', texto: 'Paso 1: escoge la OLT. Abajo aparecerán sus ONUs con su estado y su perfil TR-069.' };
+      return { icono: 'lan', texto: 'Escoge la OLT. Abajo aparecerán sus ONUs con su estado y su perfil TR-069.' };
     }
     if (this.seleccionadas().size) {
-      return { icono: 'checklist', texto: `Paso 2: tienes ${this.seleccionadas().size} ONU(s) seleccionadas. Presiona "Armar vista previa con las ${this.seleccionadas().size}".` };
+      return { icono: 'checklist', texto: `Tienes ${this.seleccionadas().size} ONU(s) seleccionadas. Presiona "Armar vista previa con las ${this.seleccionadas().size}".` };
     }
-    return { icono: 'filter_alt', texto: 'Paso 2: filtra por tarjeta o puerto, o selecciona ONUs en la tabla de abajo (sin perfil y GUAJIRANET). Luego arma la vista previa.' };
+    return { icono: 'filter_alt', texto: 'Filtra por tarjeta o puerto, o selecciona ONUs en la tabla de abajo (sin perfil y GUAJIRANET). Luego arma la vista previa.' };
   });
   protected readonly avance = signal<string[]>([]);
+  protected readonly segundosArmando = signal(0);
   protected readonly error = signal<string | null>(null);
 
   constructor() {
@@ -576,12 +655,22 @@ export class NuevoLoteComponent {
   }
 
   /** Las que ya tienen el perfil nuevo no se seleccionan: no hay nada que cambiarles. */
-  protected seleccionable(o: { perfil: string | null; modoGestion?: string | null; vlanGestion?: number | null }): boolean {
-    if (this.tipo() === 'VLAN_GESTION') {
-      // Gestión VLAN 46: solo las que ya tienen GUAJIRANET1 (si no, no sabrían a qué ACS reportarse) y aún no la tienen.
-      return o.perfil?.toUpperCase() === this.perfilDestino && !this.tieneGestion({ modoGestion: o.modoGestion ?? null, vlanGestion: o.vlanGestion ?? null });
+  protected seleccionable(o: { perfil: string | null; modoGestion?: string | null; vlanGestion?: number | null; tr069?: boolean; tresPasosListos?: boolean }): boolean {
+    // Las que ya terminaron los 3 pasos no se escogen en ningún paso.
+    if (o.tresPasosListos) return false;
+    if (this.tipo() === 'SERVICIO_WAN') {
+      // Servicio WAN (va al final): las que ya tienen la VLAN 46, que es por donde GenieACS les entrega el cambio.
+      return this.tieneGestion({ modoGestion: o.modoGestion ?? null, vlanGestion: o.vlanGestion ?? null });
     }
-    return o.perfil?.toUpperCase() !== this.perfilDestino;
+    if (this.tipo() === 'VLAN_GESTION') {
+      // Gestión VLAN 46 (va primero): las que todavía no la tienen, tengan el perfil que tengan.
+      // También las que tienen la VLAN sin el TR-069 activo: el paso 1 se lo activa.
+      return !this.tieneGestion({ modoGestion: o.modoGestion ?? null, vlanGestion: o.vlanGestion ?? null }) || o.tr069 === false;
+    }
+    // Perfil TR-069: las que no tienen GUAJIRANET1, y las que lo tienen pero ya con la VLAN 46 (se les reaplica para
+    // que la ONU pida IP por esa VLAN).
+    return o.perfil?.toUpperCase() !== this.perfilDestino
+      || this.tieneGestion({ modoGestion: o.modoGestion ?? null, vlanGestion: o.vlanGestion ?? null });
   }
 
   protected alternar(sn: string): void {
@@ -622,7 +711,16 @@ export class NuevoLoteComponent {
     }
   }
 
-  protected armar(): void {
+  /** Las ONUs con los 3 pasos listos que en la OLT no tienen el perfil destino (en línea). */
+  protected readonly listasSinPerfil = computed(() => !this.onusOlt()?.perfilesLeidos ? [] : this.visiblesPorMarca()
+    .filter((o) => o.tresPasosListos && o.enLinea && o.perfil?.toUpperCase() !== this.perfilDestino.toUpperCase()));
+
+  /** Arma un lote de perfil solo con las ya listas a las que les falta GUAJIRANET1. */
+  protected revisarListas(): void {
+    this.armar(this.listasSinPerfil().map((o) => o.sn));
+  }
+
+  protected armar(soloEstas?: string[]): void {
     if (this.formulario.invalid) {
       return;
     }
@@ -632,17 +730,25 @@ export class NuevoLoteComponent {
     this.armando.set(true);
     const avance: Subscription = this.tiempoReal.escuchar(`armado:${this.auth.usuario()?.usuario}`)
       .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe((evento) => this.avance.update((lista) => [...lista, String(evento.datos['mensaje'] ?? '')]));
+      .subscribe((evento) => {
+        // Solo los avisos con texto: la conexión en vivo también avisa sin mensaje cada pocos segundos.
+        const mensaje = String(evento.datos?.['mensaje'] ?? '').trim();
+        if (mensaje) this.avance.update((lista) => [...lista, mensaje]);
+      });
+    const inicio = Date.now();
+    this.segundosArmando.set(0);
+    const reloj = setInterval(() => this.segundosArmando.set(Math.round((Date.now() - inicio) / 1000)), 1000);
     this.lotesService.armarVistaPrevia({
-      marca: valores.marca ?? 'TODAS',
+      marca: valores.marca ?? 'Huawei',
       olt: valores.olt ?? null,
       tarjeta: valores.tarjeta ?? null,
       pon: valores.pon === null || valores.pon === undefined || String(valores.pon) === '' ? null : Number(valores.pon),
-      perfiles: this.tipo() === 'PERFIL_TR069' && this.seleccionadas().size ? this.perfilesDeLaSeleccion() : null,
-      sns: this.seleccionadas().size ? [...this.seleccionadas()] : null,
-      tipo: this.tipo(),
+      perfiles: soloEstas ? null : this.tipo() === 'PERFIL_TR069' && this.seleccionadas().size ? this.perfilesDeLaSeleccion() : null,
+      sns: soloEstas ?? (this.seleccionadas().size ? [...this.seleccionadas()] : null),
+      tipo: soloEstas ? 'PERFIL_TR069' : this.tipo(),
     }).pipe(finalize(() => {
       this.armando.set(false);
+      clearInterval(reloj);
       avance.unsubscribe();
     })).subscribe({
       next: (vista) => void this.router.navigate(['/lotes', vista.lote.id, 'vista-previa']),

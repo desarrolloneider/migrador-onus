@@ -23,6 +23,7 @@ class CambioDePerfilUnaOnuTest {
         int perfil = 2;
         boolean enLinea = true;
         boolean rechazar = false;
+        boolean sinSmartOlt = false;
         int ocupadaVeces = 0;
         String prompt = "OLT-CONEJO>";
 
@@ -36,9 +37,17 @@ class CambioDePerfilUnaOnuTest {
                 case "quit" -> prompt = prompt.contains("-if-") ? "OLT-CONEJO(config)#" : "OLT-CONEJO#";
                 default -> { }
             }
+            if (comando.equals("display ont tr069-server-profile all") && sinSmartOlt) {
+                return """
+                         Profile ID     Profile Name                     Binding Times
+                         2              GUAJIRANET                       0
+                         3              GUAJIRANET1                      10
+                        """;
+            }
             if (comando.equals("display ont tr069-server-profile all")) {
                 return """
                          Profile ID     Profile Name                     Binding Times
+                         1              SmartOLT                         4
                          2              GUAJIRANET                       6
                          3              GUAJIRANET1                      10
                         """;
@@ -52,7 +61,7 @@ class CambioDePerfilUnaOnuTest {
                           TR069 server profile ID      : %s
                           TR069 server profile name    : %s
                         """.formatted(enLinea ? "online" : "offline", perfil == 0 ? "-" : String.valueOf(perfil),
-                                perfil == 0 ? "-" : perfil == 3 ? "GUAJIRANET1" : "GUAJIRANET");
+                                perfil == 0 ? "-" : perfil == 3 ? "GUAJIRANET1" : perfil == 1 ? "SmartOLT" : "GUAJIRANET");
             }
             if (comando.startsWith("ont tr069-server-config")) {
                 if (ocupadaVeces > 0) {
@@ -62,7 +71,7 @@ class CambioDePerfilUnaOnuTest {
                 if (rechazar) {
                     return "  % Failure: The ONT does not exist";
                 }
-                perfil = 3;
+                perfil = Integer.parseInt(comando.substring(comando.lastIndexOf(' ') + 1));
             }
             return comando.equals("save") ? "The data of the system is saved completely" : "";
         }
@@ -129,6 +138,37 @@ class CambioDePerfilUnaOnuTest {
         assertThat(r.mensaje()).isNotBlank();
         assertThat(r.codigoFallo()).isEqualTo("FALLO_OLT_RECHAZO");
         assertThat(olt.recibidos).doesNotContain("save");
+    }
+
+    @Test
+    void siYaTieneElPerfilYLaVlanDeGestionLoReaplica() {
+        OltFalsa olt = new OltFalsa();
+        olt.perfil = 3;
+        Objetivo conVlan = new Objetivo("OLT-CONEJO", 0, 0, 6, 2, List.of("GUAJIRANET"), "GUAJIRANET1", true, false, "48575443FCAA95B0", () -> true);
+        Resultado r = cambio.ejecutar(conVlan, true, () -> olt);
+        assertThat(r.fin()).isEqualTo(CambioDePerfilUnaOnu.Final.COMPLETADA);
+        assertThat(r.mensaje()).contains("reaplicado");
+        assertThat(olt.recibidos).containsSubsequence("ont tr069-server-config 6 2 profile-id 1", "ont tr069-server-config 6 2 profile-id 3", "save");
+        assertThat(olt.perfil).isEqualTo(3);
+    }
+
+    @Test
+    void sinElPerfilSmartOltReaplicaPasandoPorGuajiranet() {
+        OltFalsa olt = new OltFalsa();
+        olt.perfil = 3;
+        olt.sinSmartOlt = true;
+        Objetivo conVlan = new Objetivo("OLT-CONEJO", 0, 0, 6, 2, List.of("GUAJIRANET"), "GUAJIRANET1", true, false, "48575443FCAA95B0", () -> true);
+        assertThat(cambio.ejecutar(conVlan, true, () -> olt).fin()).isEqualTo(CambioDePerfilUnaOnu.Final.COMPLETADA);
+        assertThat(olt.recibidos).containsSubsequence("ont tr069-server-config 6 2 profile-id 2", "ont tr069-server-config 6 2 profile-id 3");
+    }
+
+    @Test
+    void siYaTieneElPerfilYNoTieneLaVlanNoHaceNada() {
+        OltFalsa olt = new OltFalsa();
+        olt.perfil = 3;
+        Objetivo sinVlan = new Objetivo("OLT-CONEJO", 0, 0, 6, 2, List.of("GUAJIRANET"), "GUAJIRANET1", true, false, "48575443FCAA95B0", () -> false);
+        assertThat(cambio.ejecutar(sinVlan, true, () -> olt).fin()).isEqualTo(CambioDePerfilUnaOnu.Final.YA_TENIA);
+        assertThat(olt.recibidos).doesNotContain("config");
     }
 
     @Test

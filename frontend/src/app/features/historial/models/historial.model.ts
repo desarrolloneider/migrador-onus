@@ -36,9 +36,13 @@ export interface IntentoOnu {
   paso: string | null;
   codigo: string | null;
   mensaje: string | null;
+  /** VLAN_GESTION, PERFIL_TR069 o SERVICIO_WAN. */
+  tipo?: string | null;
 }
 
 export interface FiltrosHistorial {
+  /** El paso del procedimiento: cada uno tiene su propio último resultado por ONU. */
+  tipo?: string | null;
   sn?: string | null;
   olt?: string | null;
   tarjeta?: string | null;

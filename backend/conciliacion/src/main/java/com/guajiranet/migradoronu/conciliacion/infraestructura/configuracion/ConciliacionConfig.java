@@ -35,8 +35,21 @@ public class ConciliacionConfig {
     }
 
     @Bean
-    ConsultarOnusDeOlt consultarOnusDeOlt(SmartOltInventoryAdapter smartOlt, OltProfilesQueryPort perfilesOlt) {
-        return new ConsultarOnusDeOlt(smartOlt, perfilesOlt);
+    ConsultarOnusDeOlt consultarOnusDeOlt(SmartOltInventoryAdapter smartOlt, OltProfilesQueryPort perfilesOlt,
+            OnuParticipationQueryPort participacion,
+            org.springframework.beans.factory.ObjectProvider<com.guajiranet.migradoronu.conciliacion.puertos.salida.UltimoReporteAcsPort> acs) {
+        return new ConsultarOnusDeOlt(smartOlt, perfilesOlt, () -> {
+            java.util.Set<String> r = new java.util.HashSet<>(participacion.servicioWanTerminado().keySet());
+            var genie = acs.getIfAvailable();
+            if (genie != null) {
+                try {
+                    r.addAll(genie.conServicioWanListo());
+                } catch (RuntimeException e) {
+                    // Sin GenieACS se marcan solo las que terminó la herramienta.
+                }
+            }
+            return r;
+        });
     }
 
     @Bean
@@ -59,9 +72,12 @@ public class ConciliacionConfig {
                                   @Value("${migrador.marcas-onu:*}") String marcas,
                                   @Value("${MIGRADOR_EXIGIR_CONTRATO_WISPRO:false}") boolean exigirContrato,
                                   @Value("${MIGRADOR_VLAN_GESTION:46}") int vlanGestion,
-                                  OltSettingsQueryPort olts, OnuParticipationQueryPort participacion, TargetProfilePort perfil) {
+                                  OltSettingsQueryPort olts, OnuParticipationQueryPort participacion, TargetProfilePort perfil,
+                                  org.springframework.beans.factory.ObjectProvider<com.guajiranet.migradoronu.conciliacion.puertos.salida.UltimoReporteAcsPort> acs,
+                                  Clock reloj) {
         return new ClasificarOnusUseCase(smartOltInventario, wisproDirectorio,
-                olts, participacion, perfil::perfilDestino, Set.of(marcas.split("\\s*,\\s*")), perfilesOlt, () -> perfilOrigen, exigirContrato).conVlanGestion(vlanGestion);
+                olts, participacion, perfil::perfilDestino, Set.of(marcas.split("\\s*,\\s*")), perfilesOlt, () -> perfilOrigen, exigirContrato).conVlanGestion(vlanGestion)
+                .conAcs(acs.getIfAvailable(), reloj);
     }
 
     private static <T> Supplier<T> unaVez(Supplier<T> fabrica) {

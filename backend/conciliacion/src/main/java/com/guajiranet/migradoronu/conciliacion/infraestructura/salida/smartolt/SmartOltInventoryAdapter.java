@@ -128,7 +128,7 @@ public class SmartOltInventoryAdapter implements OnuInventoryPort {
         String ip = Optional.ofNullable(texto(r, "ip_address")).orElseGet(() -> ipEnElNombre(texto(r, "name")));
         String perfil = texto(r, "tr069_profile");
         String modelo = texto(r, "onu_type_name");
-        return Optional.of(new OnuCandidate(sn, marcaDe(sn, texto(r, "vendor", "brand")), modelo,
+        return Optional.of(new OnuCandidate(sn, marcaDe(sn, texto(r, "vendor", "brand"), modelo), modelo,
                 new OnuPosition(olt, "0/" + board, port, onu), enLinea, ip, perfil, gestion(r)));
     }
 
@@ -162,6 +162,18 @@ public class SmartOltInventoryAdapter implements OnuInventoryPort {
             "RUIJ", "Ruijie", "HNET", "Hikvision", "GPON", "Genérica GPON");
 
     /** La marca sale del fabricante que traen los 4 primeros caracteres del SN (HWTC = Huawei) si SmartOLT no la da. */
+    /**
+     * Como {@link #marcaDe(String, String)}, pero los modelos MONU… (MONUV411 y parecidos) no son Huawei aunque su SN
+     * empiece por HWTC: por dentro usan otros parámetros (X_CT-COM, sin X_HW_SERVICELIST) y el procedimiento no les sirve.
+     */
+    static String marcaDe(String sn, String vendor, String modelo) {
+        String marca = marcaDe(sn, vendor);
+        if ("Huawei".equals(marca) && modelo != null && modelo.toUpperCase(Locale.ROOT).startsWith("MONU")) {
+            return "Genérica (" + modelo + ")";
+        }
+        return marca;
+    }
+
     static String marcaDe(String sn, String vendor) {
         if (vendor != null) {
             return vendor.toUpperCase(Locale.ROOT).startsWith("HUAWEI") || vendor.equalsIgnoreCase("HWTC") ? "Huawei" : vendor;

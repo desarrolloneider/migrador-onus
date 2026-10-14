@@ -13,7 +13,7 @@ public final class HistorialDeOnus {
     private HistorialDeOnus() {
     }
 
-    public record Filtros(String sn, String olt, String tarjeta, String resultado, Instant desde, Instant hasta, int pagina, int tamano) {
+    public record Filtros(String tipo, String sn, String olt, String tarjeta, String resultado, Instant desde, Instant hasta, int pagina, int tamano) {
     }
 
     public record Entrada(String sn, String ip, String olt, String tarjeta, Integer pon, Integer onuId, String ultimoResultado, Boolean revisada,
@@ -24,6 +24,6 @@ public final class HistorialDeOnus {
     }
 
     public record Intento(Long ejecucionId, long loteId, String loteNumero, Instant fecha, String resultado, boolean simulacion,
-                          String paso, String codigo, String mensaje) {
+                          String paso, String codigo, String mensaje, String tipo) {
     }
 }

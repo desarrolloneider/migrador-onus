@@ -14,7 +14,7 @@ import { mensajeDeError } from '../../../../core/api/errores';
 import { TiempoRealService } from '../../../../core/realtime/tiempo-real.service';
 import { ConfirmarDialogoComponent, DatosConfirmacion } from '../../../../shared/dialogos/confirmar-dialogo.component';
 import { EstadoChipComponent } from '../../../../shared/estado-chip/estado-chip.component';
-import { ESTADOS_EJECUCION, ESTADOS_LOTE, INDIVIDUAL, NOMBRES_PASO, SIMULACION, Tono, describirFiltros } from '../../../../shared/estados';
+import { ESTADOS_EJECUCION, ESTADOS_LOTE, INDIVIDUAL, NOMBRES_PASO, nombrePaso, SIMULACION, Tono, describirFiltros } from '../../../../shared/estados';
 import { DuracionPipe, HoraColombiaPipe } from '../../../../shared/formato/formato.pipes';
 import { EjecucionesService } from '../../../ejecuciones/data/ejecuciones.service';
 import { EjecucionOnu, EstadoEjecucion } from '../../../ejecuciones/models/ejecucion.model';
@@ -144,7 +144,7 @@ interface Contador {
             <div class="resumen-texto">
               <h2>{{ fallidas().length > 0 ? 'Terminó con fallas' : l.contadores.fallidas > 0 ? 'Terminó con fallas, ya resueltas' : (l.simulacion ? 'Simulación terminada' : 'Lote terminado') }}</h2>
               <p>
-                <strong class="ok">{{ l.contadores.completadas }}</strong> {{ l.simulacion ? 'simuladas' : 'cambiadas a GUAJIRANET1' }} ·
+                <strong class="ok">{{ l.contadores.completadas }}</strong> {{ l.simulacion ? 'simuladas' : textoCompletadas() }} ·
                 <strong class="ko">{{ l.contadores.fallidas }}</strong> fallidas
                 @if (resueltasDespues()) { <span class="ok">({{ resueltasDespues() }} ya resueltas después)</span> } ·
                 <strong>{{ l.contadores.excluidasAlEjecutar + l.contadores.noIniciadas }}</strong> excluidas
@@ -159,6 +159,18 @@ interface Contador {
               <a mat-stroked-button [routerLink]="['/auditoria']" [queryParams]="{ lote: l.numero }"><mat-icon>policy</mat-icon> Ver en auditoría</a>
               <a mat-stroked-button routerLink="/lotes/nuevo"><mat-icon>add</mat-icon> Nuevo lote</a>
             </div>
+            @if (siguientePaso(); as sig) {
+              <div class="siguiente-paso">
+                <mat-icon>arrow_forward</mat-icon>
+                <div>
+                  <strong>Siguiente: {{ sig.nombre }}</strong>
+                  <span>{{ sig.texto }} Se arma la vista previa con las <strong>{{ listasParaSeguir().length }}</strong> ONUs que terminaron bien en este lote; las fallidas no pasan.</span>
+                </div>
+                <button mat-flat-button type="button" [class.oculto-sin-permiso]="!puedeEjecutar" (click)="seguir()"
+                        [disabled]="!listasParaSeguir().length || siguiendo()">
+                  <mat-icon>double_arrow</mat-icon> {{ siguiendo() ? 'Armando…' : 'Continuar con ' + sig.nombre }}</button>
+              </div>
+            }
             @if (reintentandoTodas()) { <mat-progress-bar mode="indeterminate" class="ancho-completo" /> }
           </section>
         }
@@ -218,6 +230,11 @@ interface Contador {
     </div>
   `,
   styles: `
+    .siguiente-paso { grid-column: 1 / -1; width: 100%; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 12px; padding: 12px 14px;
+      border-radius: 14px; background: color-mix(in srgb, var(--mat-sys-primary) 10%, transparent); border: 1px solid color-mix(in srgb, var(--mat-sys-primary) 35%, transparent); }
+    .siguiente-paso > mat-icon { color: var(--mat-sys-primary); }
+    .siguiente-paso > div { flex: 1; min-width: 240px; display: flex; flex-direction: column; gap: 2px; font-size: 13.5px; }
+    .siguiente-paso span { color: var(--mat-sys-on-surface-variant); }
     .resuelta { display: inline-flex; align-items: center; gap: 2px; font-size: 12px; color: var(--color-exito); }
     .resuelta mat-icon, .enlace-resuelta mat-icon { font-size: 16px; width: 16px; height: 16px; }
     .enlace-resuelta { display: inline-flex; align-items: center; gap: 4px; font-size: 12.5px; color: var(--color-exito); text-decoration: none; }
@@ -291,6 +308,46 @@ export class EjecucionLoteComponent implements OnInit {
   protected readonly repitiendo = signal(false);
   protected readonly errorRepetir = signal<string | null>(null);
   protected readonly ejecuciones = signal<EjecucionOnu[]>([]);
+  protected readonly siguiendo = signal(false);
+
+  /** El paso que sigue en el procedimiento del NOC (1 VLAN 46 → 2 perfil → 3 servicio WAN). Solo para lotes reales. */
+  protected readonly siguientePaso = computed(() => {
+    const l = this.lote();
+    if (!l || l.simulacion) return null;
+    switch (l.filtros.tipo) {
+      case 'VLAN_GESTION': return { tipo: 'PERFIL_TR069' as const, nombre: '2 · Perfil TR-069', texto: 'Les pone GUAJIRANET1 para que se reporten a GenieACS.' };
+      case 'PERFIL_TR069': return { tipo: 'SERVICIO_WAN' as const, nombre: '3 · Servicio WAN',
+        texto: 'Cambia X_HW_SERVICELIST en GenieACS y quita la VLAN 46. Solo entran las que tienen la VLAN 46 (las demás quedan fuera con su motivo).' };
+      default: return null;
+    }
+  });
+
+  /** Las que terminaron bien: completadas, o excluidas sin código porque ya lo tenían. */
+  protected readonly listasParaSeguir = computed(() => this.ejecuciones()
+    .filter((e) => e.estado === 'COMPLETADA' || (e.estado === 'EXCLUIDA_AL_EJECUTAR' && !e.codigo))
+    .map((e) => e.sn));
+
+  protected textoCompletadas(): string {
+    switch (this.lote()?.filtros.tipo) {
+      case 'VLAN_GESTION': return 'con la VLAN 46';
+      case 'SERVICIO_WAN': return 'con el servicio WAN listo';
+      default: return 'cambiadas a GUAJIRANET1';
+    }
+  }
+
+  protected seguir(): void {
+    const l = this.lote();
+    const sig = this.siguientePaso();
+    const sns = this.listasParaSeguir();
+    if (!l || !sig || !sns.length) return;
+    this.siguiendo.set(true);
+    this.lotesService.armarVistaPrevia({ marca: 'Huawei', olt: l.filtros.olt, tarjeta: null, pon: null, sns, tipo: sig.tipo })
+      .pipe(finalize(() => this.siguiendo.set(false)))
+      .subscribe({
+        next: (vista) => void this.router.navigate(['/lotes', vista.lote.id, 'vista-previa']),
+        error: (error: unknown) => this.avisos.open(`No se pudo armar ${sig.nombre}: ${mensajeDeError(error)}`, 'Cerrar', { duration: 10_000 }),
+      });
+  }
   protected readonly error = signal<string | null>(null);
   protected readonly deteniendo = signal(false);
   protected readonly filtro = signal<FiltroFilas>('TODAS');
@@ -401,7 +458,7 @@ export class EjecucionLoteComponent implements OnInit {
   }
 
   protected nombrePaso(e: EjecucionOnu): string {
-    return e.pasoActual ? NOMBRES_PASO[e.pasoActual] : '';
+    return e.pasoActual ? nombrePaso(e.pasoActual, this.lote()?.filtros?.tipo) : '';
   }
 
   protected detener(): void {
@@ -462,8 +519,8 @@ export class EjecucionLoteComponent implements OnInit {
         return e.revisada ? of(null) : this.ejecucionesService.marcarRevisada(e.id, { nota });
       }),
       // En un lote de VLAN el reintento vuelve a poner la VLAN de gestión, no el perfil.
-      switchMap(() => this.lote()?.filtros.tipo === 'VLAN_GESTION'
-        ? this.lotesService.armarVistaPrevia({ marca: 'TODAS', olt: null, tarjeta: null, pon: null, sns: [e.sn], tipo: 'VLAN_GESTION' })
+      switchMap(() => this.lote()?.filtros.tipo && this.lote()?.filtros.tipo !== 'PERFIL_TR069'
+        ? this.lotesService.armarVistaPrevia({ marca: 'Huawei', olt: null, tarjeta: null, pon: null, sns: [e.sn], tipo: this.lote()!.filtros.tipo })
         : this.lotesService.armarPruebaIndividual({ sn: e.sn })),
       switchMap((vista) => {
         const item = vista.items[0];
@@ -511,7 +568,7 @@ export class EjecucionLoteComponent implements OnInit {
         return revisar.length ? forkJoin(revisar) : of([]);
       }),
       switchMap(() => this.lotesService.armarVistaPrevia({
-        marca: 'TODAS', olt: olts.length === 1 ? olts[0] : null, tarjeta: null, pon: null,
+        marca: 'Huawei', olt: olts.length === 1 ? olts[0] : null, tarjeta: null, pon: null,
         perfiles: this.lote()?.filtros.tipo === 'VLAN_GESTION' ? null : ['GUAJIRANET', 'SIN_PERFIL'], sns: fallidas.map((f) => f.sn),
         tipo: this.lote()?.filtros.tipo ?? 'PERFIL_TR069',
       })),

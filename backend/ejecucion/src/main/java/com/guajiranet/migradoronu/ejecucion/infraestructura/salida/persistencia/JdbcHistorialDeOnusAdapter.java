@@ -23,9 +23,13 @@ import com.guajiranet.migradoronu.ejecucion.puertos.salida.HistorialDeOnusPort;
 /** El historial por ONU sobre ejecuciones_onu, lotes y lote_items (solo lectura). */
 public class JdbcHistorialDeOnusAdapter implements HistorialDeOnusPort {
 
-    /** Resultado visible de una ejecución. Una excluida sin código es una ONU que ya tenía el perfil nuevo. */
+    /**
+     * Resultado visible de una ejecución. Una excluida sin código es una ONU que ya tenía el perfil nuevo. FALLO_NO_GUARDADO
+     * cuenta como corregida: el cambio quedó aplicado y verificado, solo faltó la confirmación del guardado de la OLT.
+     */
     private static final String RESULTADO = """
-            CASE e.estado WHEN 'COMPLETADA' THEN 'CORREGIDA' WHEN 'FALLIDA' THEN 'FALLIDA'
+            CASE e.estado WHEN 'COMPLETADA' THEN 'CORREGIDA'
+                 WHEN 'FALLIDA' THEN CASE WHEN e.codigo_fallo = 'FALLO_NO_GUARDADO' THEN 'CORREGIDA' ELSE 'FALLIDA' END
                  WHEN 'EXCLUIDA_AL_EJECUTAR' THEN CASE WHEN e.codigo_fallo IS NULL THEN 'YA_TENIA_PERFIL' ELSE 'EXCLUIDA' END
                  ELSE e.estado END
             """;
@@ -37,7 +41,7 @@ public class JdbcHistorialDeOnusAdapter implements HistorialDeOnusPort {
                        CASE WHEN e.estado = 'FALLIDA' THEN e.revisada END AS revisada, e.codigo_fallo, e.mensaje_fallo,
                        e.lote_id, l.numero, coalesce(e.terminada_en, e.iniciada_en, l.creado_en) AS fecha
                 FROM ejecuciones_onu e JOIN lotes l ON l.id = e.lote_id JOIN lote_items i ON i.id = e.lote_item_id
-                WHERE NOT l.simulacion AND e.estado IN ('COMPLETADA', 'FALLIDA', 'EXCLUIDA_AL_EJECUTAR')
+                WHERE NOT l.simulacion AND l.tipo = ? AND e.estado IN ('COMPLETADA', 'FALLIDA', 'EXCLUIDA_AL_EJECUTAR')
                 ORDER BY e.sn, coalesce(e.terminada_en, e.iniciada_en, l.creado_en) DESC
             )
             """.formatted(RESULTADO);
@@ -52,6 +56,8 @@ public class JdbcHistorialDeOnusAdapter implements HistorialDeOnusPort {
     public Pagina buscar(Filtros f) {
         StringBuilder donde = new StringBuilder(" WHERE TRUE");
         List<Object> parametros = new ArrayList<>();
+        // Cada paso del procedimiento (VLAN, perfil, servicio WAN) tiene su propio último resultado por ONU.
+        parametros.add(f.tipo() == null ? "PERFIL_TR069" : f.tipo());
         if (f.sn() != null) {
             donde.append(" AND sn ILIKE ?");
             parametros.add("%" + f.sn() + "%");
@@ -98,7 +104,7 @@ public class JdbcHistorialDeOnusAdapter implements HistorialDeOnusPort {
     public List<Intento> intentos(String sn) {
         return jdbc.sql("""
                         SELECT e.id, e.lote_id, l.numero, coalesce(e.terminada_en, e.iniciada_en, l.creado_en) AS fecha, %s AS resultado,
-                               l.simulacion, e.paso_actual, e.codigo_fallo, e.mensaje_fallo
+                               l.simulacion, e.paso_actual, e.codigo_fallo, e.mensaje_fallo, l.tipo
                         FROM ejecuciones_onu e JOIN lotes l ON l.id = e.lote_id
                         WHERE e.sn = ?
                         ORDER BY fecha DESC
@@ -106,7 +112,7 @@ public class JdbcHistorialDeOnusAdapter implements HistorialDeOnusPort {
                 .param(sn)
                 .query((rs, n) -> new Intento(rs.getLong("id"), rs.getLong("lote_id"), rs.getString("numero"), instante(rs, "fecha"),
                         rs.getString("resultado"), rs.getBoolean("simulacion"), rs.getString("paso_actual"), rs.getString("codigo_fallo"),
-                        rs.getString("mensaje_fallo")))
+                        rs.getString("mensaje_fallo"), rs.getString("tipo")))
                 .list();
     }
 

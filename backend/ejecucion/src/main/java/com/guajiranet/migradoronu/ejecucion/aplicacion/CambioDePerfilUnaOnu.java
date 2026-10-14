@@ -29,6 +29,12 @@ import com.guajiranet.migradoronu.procedimientos.dominio.TablaDePerfilesHuawei;
  */
 public class CambioDePerfilUnaOnu {
 
+    /**
+     * El perfil intermedio al reaplicar, en orden de preferencia: el que pone SmartOLT y, si la OLT no lo tiene (OLT-CONEJO
+     * solo tiene GUAJIRANET y GUAJIRANET1), el viejo GUAJIRANET.
+     */
+    public static final List<String> PERFILES_INTERMEDIOS = List.of("SmartOLT", "GUAJIRANET");
+
     /** En la lista de perfiles de origen, las ONUs que no tienen ningún perfil TR-069. */
     public static final String SIN_PERFIL = "SIN_PERFIL";
 
@@ -37,10 +43,27 @@ public class CambioDePerfilUnaOnu {
      * @param snEsperado     el SN de la vista previa; si la OLT muestra otro en esa posición, no se toca. Null para no comparar.
      */
     public record Objetivo(String olt, int frame, int slot, int puerto, int ont, List<String> perfilesOrigen, String perfilDestino,
-                           boolean guardar, boolean permitirFueraDeLinea, String snEsperado) {
+                           boolean guardar, boolean permitirFueraDeLinea, String snEsperado, java.util.function.BooleanSupplier reaplicar) {
 
         public Objetivo {
             perfilesOrigen = List.copyOf(perfilesOrigen);
+        }
+
+        public Objetivo(String olt, int frame, int slot, int puerto, int ont, List<String> perfilesOrigen, String perfilDestino,
+                        boolean guardar, boolean permitirFueraDeLinea, String snEsperado) {
+            this(olt, frame, slot, puerto, ont, perfilesOrigen, perfilDestino, guardar, permitirFueraDeLinea, snEsperado, null);
+        }
+
+        /** Solo se pregunta si la ONU ya tiene el perfil destino. */
+        boolean hayQueReaplicar() {
+            if (reaplicar == null) {
+                return false;
+            }
+            try {
+                return reaplicar.getAsBoolean();
+            } catch (RuntimeException e) {
+                return false;
+            }
         }
 
         String origenes() {
@@ -186,11 +209,25 @@ public class CambioDePerfilUnaOnu {
                 return r.fin(real, Final.EXCLUIDA, "P03", "EXC_CAMBIO_AL_EJECUTAR", "En " + o.posicion() + " hay otro equipo: se esperaba "
                         + o.snEsperado() + " y la OLT muestra " + a.sn() + ". No se tocó.");
             }
+            // Ya tiene el destino, pero si después se le puso la VLAN de gestión hay que reaplicarlo (intermedio y destino
+            // otra vez): así la OLT le reenvía la configuración TR-069 y la ONU pide IP por esa VLAN sin reiniciarla.
+            Optional<Integer> intermedio = Optional.empty();
             if (a.perfilId().equals(destino)) {
-                r.paso("P03", leer, foto, true, "Foto previa: " + estado + ".");
-                return r.fin(real, Final.YA_TENIA, "P03", null, "La ONU ya tiene el perfil " + o.perfilDestino() + ": no hay nada que cambiar.");
+                if (!a.enLinea() || !o.hayQueReaplicar()) {
+                    r.paso("P03", leer, foto, true, "Foto previa: " + estado + ".");
+                    return r.fin(real, Final.YA_TENIA, "P03", null, "La ONU ya tiene el perfil " + o.perfilDestino() + ": no hay nada que cambiar.");
+                }
+                intermedio = PERFILES_INTERMEDIOS.stream().map(n -> perfiles.flatMap(t -> t.idDe(n)))
+                        .flatMap(Optional::stream).filter(id -> !Optional.of(id).equals(destino)).findFirst();
+                if (intermedio.isEmpty()) {
+                    r.paso("P03", leer, foto, false, "Foto previa: " + estado + ".");
+                    return r.fin(real, Final.FALLIDA, "P03", "FALLO_FOTO_PREVIA", "La ONU tiene la VLAN de gestión y hay que reaplicarle "
+                            + o.perfilDestino() + ", pero en " + o.olt() + " no hay otro perfil para pasar por él (" + String.join(" ni ", PERFILES_INTERMEDIOS) + ").");
+                }
+                r.paso("P03", leer, foto, true, "Foto previa: " + estado + ". Tiene la VLAN de gestión: se reaplica el perfil (perfil "
+                        + intermedio.get() + " y luego " + o.perfilDestino() + ").");
             }
-            boolean esOrigen = a.perfilId().map(origenes::contains).orElse(aceptaSinPerfil);
+            boolean esOrigen = intermedio.isPresent() || a.perfilId().map(origenes::contains).orElse(aceptaSinPerfil);
             if (!esOrigen) {
                 r.paso("P03", leer, foto, false, "Foto previa: " + estado + ".");
                 return r.fin(real, Final.EXCLUIDA, "P03", "EXC_CAMBIO_AL_EJECUTAR",
@@ -201,10 +238,15 @@ public class CambioDePerfilUnaOnu {
                 r.paso("P03", leer, foto, false, "Foto previa: " + estado + ".");
                 return r.fin(real, Final.EXCLUIDA, "P03", "EXC_FUERA_DE_LINEA", "La ONU está fuera de línea: no se toca.");
             }
-            r.paso("P03", leer, foto, true, "Foto previa: " + estado + ".");
+            if (intermedio.isEmpty()) {
+                r.paso("P03", leer, foto, true, "Foto previa: " + estado + ".");
+            }
 
-            List<String> cambio = List.of("config", "interface gpon " + o.tarjeta(),
-                    "ont tr069-server-config " + o.puerto() + " " + o.ont() + " profile-id " + destino.get(), "quit");
+            String asignar = "ont tr069-server-config " + o.puerto() + " " + o.ont() + " profile-id ";
+            List<String> cambio = new ArrayList<>(List.of("config", "interface gpon " + o.tarjeta()));
+            intermedio.ifPresent(id -> cambio.add(asignar + id));
+            cambio.add(asignar + destino.get());
+            cambio.add("quit");
             if (!real) {
                 List<String> planeados = new ArrayList<>(cambio);
                 planeados.add(leer);
@@ -231,10 +273,16 @@ public class CambioDePerfilUnaOnu {
             }
             r.paso("P04", cambio.get(1), resp, true, "Dentro de la tarjeta " + o.tarjeta() + ".");
 
-            // P05/P06: el comando reemplaza el perfil directamente (sin undo).
-            resp = enviar(consola, cambio.get(2));
-            boolean rechazo = esError(resp);
-            r.paso("P06", cambio.get(2), resp, !rechazo, rechazo ? "La OLT rechazó el comando." : "La OLT aceptó el comando.");
+            // P05/P06: el comando reemplaza el perfil directamente (sin undo). Al reaplicar van dos: intermedio y destino.
+            boolean rechazo = false;
+            for (String comando : cambio.subList(2, cambio.size() - 1)) {
+                resp = enviar(consola, comando);
+                rechazo = esError(resp);
+                r.paso("P06", comando, resp, !rechazo, rechazo ? "La OLT rechazó el comando." : "La OLT aceptó el comando.");
+                if (rechazo) {
+                    break;
+                }
+            }
             r.paso("P06", "quit", consola.ejecutar("quit"), true, "Fuera de la tarjeta.");
 
             // Verificación: se lee siempre, también si hubo rechazo, para saber cómo quedó.
@@ -273,7 +321,8 @@ public class CambioDePerfilUnaOnu {
             }
             consola.ejecutar("quit");
             return r.fin(true, Final.COMPLETADA, o.guardar() ? "P07" : "P06", null, "Cambio completado: " + o.posicion()
-                    + " pasó de " + a.perfilNombre().orElse("sin perfil") + " a " + o.perfilDestino() + (o.guardar() ? " y la configuración quedó guardada." : "."));
+                    + (intermedio.isPresent() ? " volvió a recibir " + o.perfilDestino() + " (reaplicado por la VLAN de gestión)"
+                    : " pasó de " + a.perfilNombre().orElse("sin perfil") + " a " + o.perfilDestino()) + (o.guardar() ? " y la configuración quedó guardada." : "."));
         } catch (RuntimeException e) {
             return r.fin(real, Final.FALLIDA, r.ultimoPaso, "FALLO_SISTEMA_NO_RESPONDE", "Se interrumpió: " + e.getMessage());
         }

@@ -36,6 +36,21 @@ class CambioDeGestionUnaOnuTest {
         }
 
         @Override
+        public void reiniciar(String idExterno) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public void activarTr069(String idExterno, String perfil) {
+            cambios.add(idExterno + " tr069 " + perfil);
+        }
+
+        @Override
+        public void desactivarGestion(String idExterno) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
         public void activarDhcp(String idExterno, int vlan) {
             cambios.add(idExterno + " vlan " + vlan);
             if (alCambiar != null) {
@@ -49,6 +64,7 @@ class CambioDeGestionUnaOnuTest {
     }
 
     private static final EstadoGestionOnu CON_VLAN = new EstadoGestionOnu("HWTCFCFC55B3", true, "DHCP", 46, null);
+    private static final EstadoGestionOnu CON_VLAN_Y_TR069 = new EstadoGestionOnu("HWTCFCFC55B3", true, "DHCP", 46, null, true);
 
     private Resultado ejecutar(SmartOltFalso smartOlt, boolean real) {
         return new CambioDeGestionUnaOnu(smartOlt, entrada -> { }, d -> { })
@@ -56,10 +72,17 @@ class CambioDeGestionUnaOnuTest {
     }
 
     @Test
-    void laQueYaTieneLaVlanNoSeToca() {
-        SmartOltFalso smartOlt = new SmartOltFalso(CON_VLAN);
+    void laQueYaTieneLaVlanYElTr069NoSeToca() {
+        SmartOltFalso smartOlt = new SmartOltFalso(CON_VLAN_Y_TR069);
         assertThat(ejecutar(smartOlt, true).fin()).isEqualTo(Final.YA_TENIA);
         assertThat(smartOlt.cambios).isEmpty();
+    }
+
+    @Test
+    void laQueTieneLaVlanSinTr069SoloActivaElTr069() {
+        SmartOltFalso smartOlt = new SmartOltFalso(CON_VLAN);
+        assertThat(ejecutar(smartOlt, true).fin()).isEqualTo(Final.COMPLETADA);
+        assertThat(smartOlt.cambios).containsExactly("HWTCFCFC55B3 tr069 SmartOLT");
     }
 
     @Test
@@ -83,8 +106,8 @@ class CambioDeGestionUnaOnuTest {
         SmartOltFalso smartOlt = new SmartOltFalso(inactiva(true), inactiva(true), CON_VLAN);
         Resultado r = ejecutar(smartOlt, true);
         assertThat(r.fin()).isEqualTo(Final.COMPLETADA);
-        assertThat(smartOlt.cambios).containsExactly("HWTCFCFC55B3 vlan 46");
-        assertThat(r.pasos()).extracting(CambioDePerfilUnaOnu.Paso::codigo).containsExactly("P03", "P05", "P06");
+        assertThat(smartOlt.cambios).containsExactly("HWTCFCFC55B3 vlan 46", "HWTCFCFC55B3 tr069 SmartOLT");
+        assertThat(r.pasos()).extracting(CambioDePerfilUnaOnu.Paso::codigo).containsExactly("P03", "P05", "P06", "P07");
     }
 
     @Test
@@ -102,6 +125,6 @@ class CambioDeGestionUnaOnuTest {
         SmartOltFalso smartOlt = new SmartOltFalso(inactiva(true), CON_VLAN);
         smartOlt.alCambiar = new IllegalStateException("timeout");
         assertThat(ejecutar(smartOlt, true).fin()).isEqualTo(Final.COMPLETADA);
-        assertThat(smartOlt.cambios).hasSize(1);
+        assertThat(smartOlt.cambios).containsExactly("HWTCFCFC55B3 vlan 46", "HWTCFCFC55B3 tr069 SmartOLT");
     }
 }

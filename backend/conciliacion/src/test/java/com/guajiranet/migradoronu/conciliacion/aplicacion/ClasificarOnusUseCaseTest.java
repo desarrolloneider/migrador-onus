@@ -30,6 +30,7 @@ class ClasificarOnusUseCaseTest {
     private final List<Subscriber> contratos = new ArrayList<>();
     private final Map<String, String> enOtroLote = new HashMap<>();
     private boolean accesoConfigurado = true;
+    private final Map<String, String> servicioTerminado = new HashMap<>();
 
     private final ClasificarOnusUseCase clasificar = new ClasificarOnusUseCase(
             new OnuInventoryPort() {
@@ -38,7 +39,7 @@ class ClasificarOnusUseCaseTest {
                 }
 
                 public List<OnuCandidate> findBySn(String sn) {
-                    return onus.stream().filter(o -> o.rawSn().equalsIgnoreCase(sn)).toList();
+                    return onus.stream().filter(o -> FormatoSn.normalizar(o.rawSn()).orElse(o.rawSn()).equalsIgnoreCase(FormatoSn.normalizar(sn).orElse(sn))).toList();
                 }
             },
             new SubscriberDirectoryPort() {
@@ -66,6 +67,10 @@ class ClasificarOnusUseCaseTest {
 
                 public Optional<UnreviewedFailure> unreviewedFailureOf(String sn) {
                     return Optional.empty();
+                }
+
+                public Map<String, String> servicioWanTerminado() {
+                    return servicioTerminado;
                 }
             },
             () -> "GUAJIRANET1", Set.of("Huawei"));
@@ -177,11 +182,21 @@ class ClasificarOnusUseCaseTest {
 
     @Test
     void unaOnuConOtroPerfilQuedaFuera() {
-        ClasificarOnusUseCase conOlt = conPerfilesDeOlt(Optional.of(Map.of("0/0/1:26", "SmartOLT")));
+        ClasificarOnusUseCase conOlt = conPerfilesDeOlt(Optional.of(Map.of("0/0/1:26", "WISPROACSTEST")));
         onus.add(onu("HWTC00000026", "0/0", 26, true, "10.1.1.26", null));
         contratos.add(new Subscriber("A", "C-26", "10.1.1.26", "enabled"));
         assertThat(conOlt.classify(new ClassifyOnusCommand("Huawei", null, null, null)).getFirst().reason())
                 .isEqualTo(ExclusionReason.EXC_OTRO_PERFIL);
+    }
+
+    @Test
+    void unaOnuConElPerfilQueDejaSmartOltEntraAlLoteDePerfil() {
+        // SmartOLT le pone su perfil al activar la gestión en la VLAN 46; después el lote de perfil le pone GUAJIRANET1.
+        ClasificarOnusUseCase conOlt = conPerfilesDeOlt(Optional.of(Map.of("0/0/1:27", "SmartOLT")));
+        onus.add(onu("HWTC00000027", "0/0", 27, true, "10.1.1.27", null));
+        contratos.add(new Subscriber("A", "C-27", "10.1.1.27", "enabled"));
+        assertThat(conOlt.classify(new ClassifyOnusCommand("Huawei", null, null, null)).getFirst().group())
+                .isEqualTo(ClassificationGroup.ENTRA);
     }
 
     @Test
@@ -206,7 +221,8 @@ class ClasificarOnusUseCaseTest {
                 List.of("HWTC00000026", "485754430000002" + "8"))).forEach(c -> r.put(c.onu().rawSn(), c));
         assertThat(r).doesNotContainKey("HWTC00000029");
         assertThat(r.get("HWTC00000028").group()).isEqualTo(ClassificationGroup.ENTRA);
-        assertThat(r.get("HWTC00000026").reason()).isEqualTo(ExclusionReason.EXC_OTRO_PERFIL);
+        // Con ONUs escogidas no se lee la OLT entera (rápido): entra y el ejecutor la lee en la OLT antes de tocarla.
+        assertThat(r.get("HWTC00000026").group()).isEqualTo(ClassificationGroup.ENTRA);
     }
 
     private ClasificarOnusUseCase conPerfilesDeOlt(Optional<Map<String, String>> perfiles) {
@@ -217,7 +233,7 @@ class ClasificarOnusUseCaseTest {
                     }
 
                     public List<OnuCandidate> findBySn(String sn) {
-                        return List.of();
+                        return onus.stream().filter(o -> FormatoSn.normalizar(o.rawSn()).orElse(o.rawSn()).equalsIgnoreCase(FormatoSn.normalizar(sn).orElse(sn))).toList();
                     }
                 },
                 new SubscriberDirectoryPort() {
@@ -248,5 +264,50 @@ class ClasificarOnusUseCaseTest {
                     }
                 },
                 () -> "GUAJIRANET1", Set.of("Huawei"), olt -> perfiles, () -> "GUAJIRANET");
+    }
+
+    @Test
+    void elServicioWanDejaEntrarAunqueNoSeReporteAGenieAcs() {
+        java.time.Instant ahora = java.time.Instant.parse("2026-10-14T16:00:00Z");
+        var gestion = new com.guajiranet.migradoronu.conciliacion.dominio.GestionOnu("DHCP", 46, List.of(), false);
+        onus.add(new OnuCandidate("48575443AAAA0001", "Huawei", "EG8041V5", new OnuPosition("MA5683T", "0/0", 1, 1), true, null, null, gestion));
+        onus.add(new OnuCandidate("48575443AAAA0002", "Huawei", "EG8041V5", new OnuPosition("MA5683T", "0/0", 1, 2), true, null, null, gestion));
+        onus.add(new OnuCandidate("48575443AAAA0003", "Huawei", "EG8041V5", new OnuPosition("MA5683T", "0/0", 1, 3), true, null, null, gestion));
+        Map<String, java.time.Instant> reportes = Map.of("48575443AAAA0001", ahora.minusSeconds(30),
+                "48575443AAAA0002", java.time.Instant.parse("2026-04-25T17:30:39Z"));
+        clasificar.conAcs(sn -> Optional.ofNullable(reportes.get(sn)), java.time.Clock.fixed(ahora, java.time.ZoneOffset.UTC));
+        Map<String, Classification> r = new HashMap<>();
+        clasificar.classify(new ClassifyOnusCommand("Huawei", null, null, null, null, null, "SERVICIO_WAN"))
+                .forEach(c -> r.put(c.onu().rawSn(), c));
+        // Todas entran: las que no se reportan se reinician al ejecutar y, si siguen sin responder, se dejan limpias.
+        assertThat(r.values()).allSatisfy(c -> assertThat(c.group()).isEqualTo(ClassificationGroup.ENTRA));
+    }
+
+    @Test
+    void elPasoUnoDejaFueraLasQueYaTerminaronElServicioWan() {
+        onus.add(new OnuCandidate("48575443AAAA0001", "Huawei", "EG8041V5", new OnuPosition("MA5683T", "0/0", 1, 1), true, null, null, null));
+        onus.add(new OnuCandidate("48575443AAAA0002", "Huawei", "EG8041V5", new OnuPosition("MA5683T", "0/0", 1, 2), true, null, null, null));
+        servicioTerminado.put("48575443AAAA0002", "LOT-2026-000064");
+        Map<String, Classification> r = new HashMap<>();
+        clasificar.classify(new ClassifyOnusCommand("Huawei", null, null, null, null, null, ClassifyOnusCommand.VLAN_GESTION))
+                .forEach(c -> r.put(c.onu().rawSn(), c));
+        assertThat(r.get("48575443AAAA0001").reason()).isNull();
+        assertThat(r.get("48575443AAAA0002").message()).contains("ya terminó los 3 pasos").contains("LOT-2026-000064");
+    }
+
+    @Test
+    void elPasoUnoDejaFueraLasQueGenieAcsYaTieneListas() {
+        onus.add(new OnuCandidate("48575443AAAA0003", "Huawei", "EG8041V5", new OnuPosition("MA5683T", "0/0", 1, 3), true, null, null, null));
+        clasificar.conAcs(new com.guajiranet.migradoronu.conciliacion.puertos.salida.UltimoReporteAcsPort() {
+            public Optional<java.time.Instant> ultimoReporte(String sn) {
+                return Optional.empty();
+            }
+
+            public Set<String> conServicioWanListo() {
+                return Set.of("48575443AAAA0003");
+            }
+        }, java.time.Clock.systemUTC());
+        Classification c = clasificar.classify(new ClassifyOnusCommand("Huawei", null, null, null, null, null, ClassifyOnusCommand.VLAN_GESTION)).getFirst();
+        assertThat(c.message()).contains("ya terminó los 3 pasos").contains("GenieACS");
     }
 }

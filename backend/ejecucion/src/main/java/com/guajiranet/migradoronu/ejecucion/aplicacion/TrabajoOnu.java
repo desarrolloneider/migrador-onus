@@ -9,4 +9,9 @@ public record TrabajoOnu(long ejecucionId, long loteId, String loteNumero, boole
     public boolean esVlanGestion() {
         return "VLAN_GESTION".equals(tipo);
     }
+
+    /** X_HW_SERVICELIST en GenieACS, quitar la VLAN 46 y volver a poner el perfil TR-069. */
+    public boolean esServicioWan() {
+        return "SERVICIO_WAN".equals(tipo);
+    }
 }

@@ -70,6 +70,38 @@ public class SmartOltClient {
         }
     }
 
+    /** TR-069 por la IP de gestión con ese perfil: POST /api/onu/enable_tr069/{id externo} con tr069_profile y tr069_interface=mgmt. */
+    public void activarTr069(String idExterno, String perfil) {
+        JsonNode r = http.postFormulario("/api/onu/enable_tr069/" + java.net.URLEncoder.encode(idExterno, java.nio.charset.StandardCharsets.UTF_8),
+                Map.of("tr069_profile", perfil, "tr069_interface", "mgmt"));
+        JsonNode estado = r == null ? null : r.get("status");
+        if (estado == null || !estado.asBoolean()) {
+            JsonNode error = r == null ? null : (r.has("error") ? r.get("error") : r.get("response"));
+            throw new ErrorDeIntegracion(SISTEMA, "SmartOLT no activó el TR-069: " + (error == null ? "sin detalle" : error.asString()), null);
+        }
+    }
+
+    /** Reinicia la ONU: POST /api/onu/reboot/{id externo}. */
+    public void reiniciar(String idExterno) {
+        JsonNode r = http.postFormulario("/api/onu/reboot/" + java.net.URLEncoder.encode(idExterno, java.nio.charset.StandardCharsets.UTF_8), Map.of());
+        JsonNode estado = r == null ? null : r.get("status");
+        if (estado == null || !estado.asBoolean()) {
+            JsonNode error = r == null ? null : (r.has("error") ? r.get("error") : r.get("response"));
+            throw new ErrorDeIntegracion(SISTEMA, "SmartOLT no reinició la ONU: " + (error == null ? "sin detalle" : error.asString()), null);
+        }
+    }
+
+    /** IP de gestión en Inactiva: POST /api/onu/set_onu_mgmt_ip_inactive/{id externo}. */
+    public void desactivarGestion(String idExterno) {
+        JsonNode r = http.postFormulario("/api/onu/set_onu_mgmt_ip_inactive/" + java.net.URLEncoder.encode(idExterno, java.nio.charset.StandardCharsets.UTF_8),
+                Map.of());
+        JsonNode estado = r == null ? null : r.get("status");
+        if (estado == null || !estado.asBoolean()) {
+            JsonNode error = r == null ? null : (r.has("error") ? r.get("error") : r.get("response"));
+            throw new ErrorDeIntegracion(SISTEMA, "SmartOLT no quitó la IP de gestión: " + (error == null ? "sin detalle" : error.asString()), null);
+        }
+    }
+
     /** Una página del inventario. Sirve también para el diagnóstico con tamaño 1. */
     public List<JsonNode> pagina(Map<String, ?> filtros, int pagina, int tamano) {
         Map<String, Object> parametros = new LinkedHashMap<>(filtros);

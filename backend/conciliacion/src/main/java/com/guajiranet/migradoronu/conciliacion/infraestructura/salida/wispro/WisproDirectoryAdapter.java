@@ -46,17 +46,35 @@ public class WisproDirectoryAdapter implements SubscriberDirectoryPort {
         if (actual != null && Duration.between(actual.leidaEn(), reloj.instant()).compareTo(VIGENCIA) < 0) {
             return actual.contratos();
         }
-        synchronized (descarga) {
-            // Otro hilo pudo descargarla mientras se esperaba.
-            actual = copia;
-            if (actual != null && Duration.between(actual.leidaEn(), reloj.instant()).compareTo(VIGENCIA) < 0) {
-                return actual.contratos();
-            }
-            return descargar().contratos();
+        if (actual != null) {
+            // Vencida: se usa igual (el contrato solo se muestra, no decide si una ONU entra) y se renueva por detrás,
+            // para que armar una vista previa no espere la descarga completa de Wispro (152 páginas).
+            renovarPorDetras();
+            return actual.contratos();
+        }
+        // Todavía no hay copia (recién arrancado): no se espera la descarga (unos 2 minutos). La vista previa sale sin el
+        // nombre del cliente y la copia queda lista por detrás para las siguientes.
+        renovarPorDetras();
+        return List.of();
+    }
+
+    private final java.util.concurrent.atomic.AtomicBoolean renovando = new java.util.concurrent.atomic.AtomicBoolean();
+
+    private void renovarPorDetras() {
+        if (renovando.compareAndSet(false, true)) {
+            Thread.ofVirtual().name("renovar-wispro").start(() -> {
+                try {
+                    refrescar();
+                } catch (RuntimeException ignorada) {
+                    // Se sigue usando la copia anterior; se intenta de nuevo en la próxima consulta o en la precarga.
+                } finally {
+                    renovando.set(false);
+                }
+            });
         }
     }
 
-    /** Descarga una copia nueva y la deja lista. Si falla, la copia anterior sigue sirviendo mientras esté vigente. */
+    /** Descarga una copia nueva y la deja lista. Si falla, la copia anterior sigue sirviendo. */
     public void refrescar() {
         synchronized (descarga) {
             descargar();

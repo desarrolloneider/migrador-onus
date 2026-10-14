@@ -26,6 +26,7 @@ import com.guajiranet.migradoronu.conciliacion.puertos.salida.OltSettingsQueryPo
 import com.guajiranet.migradoronu.conciliacion.puertos.salida.OnuInventoryPort;
 import com.guajiranet.migradoronu.conciliacion.puertos.salida.OnuParticipationQueryPort;
 import com.guajiranet.migradoronu.conciliacion.puertos.salida.SubscriberDirectoryPort;
+import com.guajiranet.migradoronu.conciliacion.puertos.salida.UltimoReporteAcsPort;
 
 /**
  * El recorrido K1 a K11 (spec 8.2). Lee SmartOLT y Wispro una sola vez por vista previa y cruza por IP en memoria
@@ -48,8 +49,44 @@ public class ClasificarOnusUseCase implements ClassifyOnusPort {
         return this;
     }
 
+    /** Si una ONU lleva más de esto sin reportarse al ACS, el lote "Servicio WAN" la deja fuera. */
+    static final java.time.Duration SIN_REPORTE_MAXIMO = java.time.Duration.ofMinutes(15);
+    private UltimoReporteAcsPort acs;
+    private java.time.Clock reloj = java.time.Clock.systemUTC();
+
+    /** Con el ACS, el lote "Servicio WAN" deja fuera las ONUs que no se están reportando por la VLAN de gestión. */
+    public ClasificarOnusUseCase conAcs(UltimoReporteAcsPort acs, java.time.Clock reloj) {
+        this.acs = acs;
+        this.reloj = Objects.requireNonNull(reloj, "reloj");
+        return this;
+    }
+
     /** El tipo de la clasificación en curso (lote de perfil o de VLAN). */
     private final ThreadLocal<Boolean> loteDeVlan = ThreadLocal.withInitial(() -> false);
+    /** Hasta cuántas ONUs escogidas se piden una por una a SmartOLT. */
+    static final int POCAS_POR_SN = 40;
+    /** Lote con ONUs escogidas: no se lee el perfil de la OLT entera. */
+    private final ThreadLocal<Boolean> sinLeerOlt = ThreadLocal.withInitial(() -> false);
+
+    /** Las que ya terminaron el paso 3: por la herramienta (con su lote) o, hecho por fuera, según GenieACS. */
+    private Map<String, String> terminadas() {
+        Map<String, String> r = new java.util.HashMap<>(participacion.servicioWanTerminado());
+        if (acs != null) {
+            try {
+                acs.conServicioWanListo().forEach(sn -> r.putIfAbsent(sn, "GenieACS"));
+            } catch (RuntimeException e) {
+                // Sin GenieACS se valida solo con los lotes.
+            }
+        }
+        return r;
+    }
+
+    private List<OnuCandidate> porSn(String sn) {
+        return smartOlt.findBySn(FormatoSn.normalizar(sn).orElse(sn.strip().toUpperCase(Locale.ROOT)));
+    }
+    /** En un lote de VLAN: las ONUs que ya terminaron el paso 3, con su lote. */
+    private final ThreadLocal<Map<String, String>> servicioTerminado = ThreadLocal.withInitial(Map::of);
+    private final ThreadLocal<Boolean> loteDeServicio = ThreadLocal.withInitial(() -> false);
     private final OltProfilesQueryPort perfilesOlt;
     private final Supplier<String> perfilOrigen;
 
@@ -90,8 +127,12 @@ public class ClasificarOnusUseCase implements ClassifyOnusPort {
     public List<Classification> classify(ClassifyOnusCommand command) {
         // Con ONUs escogidas una por una se traen todas las marcas, para que las de otra marca no desaparezcan sin aviso:
         // quedan fuera con su motivo. Sin selección, la marca filtra como siempre.
-        List<OnuCandidate> onus = smartOlt.listOnus(command.sns() != null ? null : command.marca(), command.oltCodigo(),
-                command.tarjeta(), command.pon());
+        // Con pocas ONUs escogidas (por ejemplo "Continuar con el paso siguiente") se piden solo esas a SmartOLT, en vez de
+        // bajar la OLT entera (miles de ONUs).
+        List<OnuCandidate> onus = command.sns() != null && command.sns().size() <= POCAS_POR_SN
+                ? command.sns().stream().flatMap(sn -> porSn(sn).stream())
+                        .filter(o -> command.oltCodigo() == null || command.oltCodigo().equalsIgnoreCase(o.position().oltCodigo())).toList()
+                : smartOlt.listOnus(command.sns() != null ? null : command.marca(), command.oltCodigo(), command.tarjeta(), command.pon());
         marcaDelLote.set(command.sns() != null && command.marca() != null && !command.marca().isBlank()
                 && !command.marca().equalsIgnoreCase("TODAS") ? command.marca() : null);
         if (command.sns() != null) {
@@ -102,13 +143,19 @@ public class ClasificarOnusUseCase implements ClassifyOnusPort {
                     .toList();
         }
         origenes.set(command.perfilesOrigen());
+        sinLeerOlt.set(command.sns() != null);
         loteDeVlan.set(command.esVlanGestion());
+        loteDeServicio.set(command.esServicioWan());
+        servicioTerminado.set(command.esVlanGestion() ? terminadas() : Map.of());
         try {
             return clasificar(onus, porIp(wispro.listAll()));
         } finally {
             origenes.remove();
             marcaDelLote.remove();
             loteDeVlan.remove();
+            loteDeServicio.remove();
+            servicioTerminado.remove();
+            sinLeerOlt.remove();
         }
     }
 
@@ -124,7 +171,8 @@ public class ClasificarOnusUseCase implements ClassifyOnusPort {
         if (escogidos == null) {
             // Por defecto se cambian las del perfil origen (GUAJIRANET) y también las que no tienen perfil.
             String origen = perfilOrigen.get();
-            return origen == null || perfil == null || origen.equalsIgnoreCase(perfil);
+            // También el perfil "SmartOLT", que deja SmartOLT al activar la gestión en la VLAN 46.
+            return origen == null || perfil == null || origen.equalsIgnoreCase(perfil) || perfil.equalsIgnoreCase("SmartOLT");
         }
         return perfil == null ? escogidos.contains(ClassifyOnusCommand.SIN_PERFIL)
                 : escogidos.stream().anyMatch(p -> p.equalsIgnoreCase(perfil));
@@ -213,7 +261,17 @@ public class ClasificarOnusUseCase implements ClassifyOnusPort {
                     onu, null, duplicados);
         }
         // El perfil real lo dice la OLT. Si la OLT tiene consola y no se pudo leer, no se adivina.
-        boolean conConsola = perfilesOlt != null && olts.consoleAccessConfigured(pos.oltCodigo());
+        // Los lotes de VLAN y de servicio WAN no dependen del perfil en la OLT (SmartOLT y GenieACS): no se lee, así no
+        // fallan si la OLT está ocupada guardando (LOT-2026-000063 quedó entero en "perfil no leído" por eso).
+        if (loteDeVlan.get() || loteDeServicio.get()) {
+            List<Subscriber> c = onu.ip() == null ? List.of() : contratosPorIp.getOrDefault(onu.ip(), List.of());
+            Subscriber unico = c.size() == 1 ? c.getFirst() : null;
+            return loteDeVlan.get() ? clasificarParaVlan(sn, onu, pos, unico, duplicados, false)
+                    : clasificarParaServicio(sn, onu, pos, unico, duplicados);
+        }
+        // Con ONUs escogidas una por una no se lee la OLT entera (lo más lento, y espera si la OLT está guardando): entran y
+        // el ejecutor lee cada una en la OLT antes de tocarla (ya tenía el perfil, otro perfil, otro SN).
+        boolean conConsola = perfilesOlt != null && !sinLeerOlt.get() && olts.consoleAccessConfigured(pos.oltCodigo());
         Optional<Map<String, String>> perfilesDeLaOlt = conConsola ? perfilesDe(pos.oltCodigo()) : Optional.empty();
         if (conConsola && perfilesDeLaOlt.isEmpty()) {
             return Classification.excluded(sn, ExclusionReason.EXC_PERFIL_NO_LEIDO,
@@ -228,11 +286,18 @@ public class ClasificarOnusUseCase implements ClassifyOnusPort {
         if (loteDeVlan.get()) {
             return clasificarParaVlan(sn, onu, pos, contrato, duplicados, perfilesDeLaOlt.isPresent());
         }
-        // Las que ya tienen el perfil nuevo no son exclusiones (spec 8.2).
-        if (onu.perfilTr069() != null && onu.perfilTr069().equalsIgnoreCase(perfilDestino.get())) {
+        if (loteDeServicio.get()) {
+            return clasificarParaServicio(sn, onu, pos, contrato, duplicados);
+        }
+        // Las que ya tienen el perfil nuevo no son exclusiones (spec 8.2). Salvo si ya tienen la VLAN de gestión: el perfil
+        // se les puso antes de la VLAN y hay que reaplicarlo para que la ONU pida IP por ella (el ejecutor lo hace).
+        boolean conVlanDeGestion = onu.gestion() != null && onu.gestion().gestionActiva() && onu.gestion().vlanGestion() != null
+                && onu.gestion().vlanGestion() == vlanGestion;
+        if (onu.perfilTr069() != null && onu.perfilTr069().equalsIgnoreCase(perfilDestino.get()) && !(conVlanDeGestion && onu.enLinea())) {
             return Classification.alreadyHasProfile(sn, onu, contrato, duplicados);
         }
-        if (perfilesDeLaOlt.isPresent() && !esOrigen(onu.perfilTr069())) {
+        boolean reaplicar = onu.perfilTr069() != null && onu.perfilTr069().equalsIgnoreCase(perfilDestino.get());
+        if (perfilesDeLaOlt.isPresent() && !reaplicar && !esOrigen(onu.perfilTr069())) {
             return Classification.excluded(sn, ExclusionReason.EXC_OTRO_PERFIL,
                     "ONU %s tiene %s en %s; en este lote solo se cambian las que tienen %s.".formatted(sn,
                             onu.perfilTr069() == null ? "ningún perfil TR-069" : "el perfil " + onu.perfilTr069(), pos.oltCodigo(),
@@ -271,25 +336,49 @@ public class ClasificarOnusUseCase implements ClassifyOnusPort {
     }
 
     /**
-     * Lote "Gestión VLAN 46": la ONU tiene que estar en línea y ya con el perfil destino en la OLT (sin él no sabría a
-     * qué ACS reportarse); las que ya tienen la IP de gestión DHCP en la VLAN van a "ya la tienen".
+     * Lote "Gestión VLAN 46": la ONU tiene que estar en línea; las que ya tienen la IP de gestión DHCP en la VLAN van a
+     * "ya la tienen". Va antes del lote de perfil, que le pone GUAJIRANET1 encima del perfil que deja SmartOLT.
      */
     private Classification clasificarParaVlan(String sn, OnuCandidate onu, OnuPosition pos, Subscriber contrato,
                                               List<DuplicateRecord> duplicados, boolean perfilLeido) {
+        String loteDelServicio = servicioTerminado.get().get(FormatoSn.normalizar(sn).orElse(sn).toUpperCase(Locale.ROOT));
+        if (loteDelServicio != null) {
+            return Classification.excluded(sn, ExclusionReason.EXC_OTRO_PERFIL,
+                    "ONU %s ya terminó los 3 pasos (servicio WAN en %s): no se le vuelve a poner la VLAN %d."
+                            .formatted(sn, loteDelServicio, vlanGestion), onu, contrato, duplicados);
+        }
         com.guajiranet.migradoronu.conciliacion.dominio.GestionOnu g = onu.gestion();
-        if (g != null && g.gestionActiva() && g.vlanGestion() != null && g.vlanGestion() == vlanGestion) {
+        // Lista solo con la VLAN y el TR-069 activo; con la VLAN y sin TR-069 entra para activarlo.
+        if (g != null && g.gestionActiva() && g.vlanGestion() != null && g.vlanGestion() == vlanGestion && g.tr069()) {
             return Classification.alreadyHasProfile(sn, onu, contrato, duplicados);
         }
         if (!onu.enLinea()) {
             return Classification.excluded(sn, ExclusionReason.EXC_FUERA_DE_LINEA,
                     "ONU %s está fuera de línea en SmartOLT.".formatted(sn), onu, null, duplicados);
         }
-        if (perfilLeido && (onu.perfilTr069() == null || !onu.perfilTr069().equalsIgnoreCase(perfilDestino.get()))) {
-            return Classification.excluded(sn, ExclusionReason.EXC_OTRO_PERFIL,
-                    "ONU %s tiene %s en %s: primero necesita %s en la OLT para que la VLAN %d le sirva.".formatted(sn,
-                            onu.perfilTr069() == null ? "ningún perfil TR-069" : "el perfil " + onu.perfilTr069(), pos.oltCodigo(),
-                            perfilDestino.get(), vlanGestion), onu, contrato, duplicados);
+        // La VLAN va primero: SmartOLT le pone su propio perfil TR-069 ("SmartOLT") al activar la gestión, y después
+        // el lote de perfil le pone GUAJIRANET1 (procedimiento confirmado el 14 de octubre). Por eso no se exige aquí.
+        return validarOltYLotes(sn, onu, pos, contrato, duplicados);
+    }
+
+    /**
+     * Lote "Servicio WAN" (va después de la VLAN 46 y de GUAJIRANET1): la ONU tiene que estar en línea y con la IP de
+     * gestión en la VLAN, que es por donde GenieACS le entrega el cambio. Si ya hizo el cambio, lo dirá la lectura en vivo.
+     */
+    private Classification clasificarParaServicio(String sn, OnuCandidate onu, OnuPosition pos, Subscriber contrato,
+                                                  List<DuplicateRecord> duplicados) {
+        if (!onu.enLinea()) {
+            return Classification.excluded(sn, ExclusionReason.EXC_FUERA_DE_LINEA,
+                    "ONU %s está fuera de línea en SmartOLT.".formatted(sn), onu, null, duplicados);
         }
+        com.guajiranet.migradoronu.conciliacion.dominio.GestionOnu g = onu.gestion();
+        if (g == null || !g.gestionActiva() || g.vlanGestion() == null || g.vlanGestion() != vlanGestion) {
+            return Classification.excluded(sn, ExclusionReason.EXC_OTRO_PERFIL,
+                    "ONU %s no tiene la IP de gestión en la VLAN %d: primero los lotes \"Gestión VLAN %d\" y \"Perfil TR-069\"."
+                            .formatted(sn, vlanGestion, vlanGestion), onu, contrato, duplicados);
+        }
+        // Aunque no se esté reportando a GenieACS, entra: al ejecutar se reinicia y, si igual no responde, se deja sin
+        // VLAN 46 ni TR-069 y con GUAJIRANET1 (no queda a medias).
         return validarOltYLotes(sn, onu, pos, contrato, duplicados);
     }
 

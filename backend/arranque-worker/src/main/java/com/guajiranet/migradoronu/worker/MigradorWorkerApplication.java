@@ -47,8 +47,10 @@ public class MigradorWorkerApplication {
                                   @Value("${migrador.perfil-origen:GUAJIRANET}") String perfilOrigen,
                                   com.guajiranet.migradoronu.comun.puertos.AuditTrailPort auditoria,
                                   com.guajiranet.migradoronu.ejecucion.puertos.salida.GestionSmartOltPort smartOlt,
+                                  com.guajiranet.migradoronu.ejecucion.puertos.salida.GenieAcsPort genie,
                                   @Value("${MIGRADOR_VLAN_GESTION:46}") int vlanGestion) {
         return new EjecutorDeOnus(cola, consolas, cambio, perfilOrigen, auditoria,
-                new com.guajiranet.migradoronu.ejecucion.aplicacion.CambioDeGestionUnaOnu(smartOlt, auditoria), vlanGestion);
+                new com.guajiranet.migradoronu.ejecucion.aplicacion.CambioDeGestionUnaOnu(smartOlt, auditoria), vlanGestion)
+                .conServicioWan(new com.guajiranet.migradoronu.ejecucion.aplicacion.CambioDeServicioWanUnaOnu(genie, smartOlt, cambio, auditoria));
     }
 }

@@ -20,9 +20,25 @@ public class OnuParticipationModuleAdapter implements OnuParticipationQueryPort 
     private final QueryOnuRunPort onuRuns;
     private final QueryBatchPort batches;
 
-    public OnuParticipationModuleAdapter(QueryOnuRunPort onuRuns, QueryBatchPort batches) {
+    private final org.springframework.jdbc.core.simple.JdbcClient jdbc;
+
+    public OnuParticipationModuleAdapter(QueryOnuRunPort onuRuns, QueryBatchPort batches, javax.sql.DataSource dataSource) {
         this.onuRuns = onuRuns;
         this.batches = batches;
+        this.jdbc = org.springframework.jdbc.core.simple.JdbcClient.create(dataSource);
+    }
+
+    @Override
+    public java.util.Map<String, String> servicioWanTerminado() {
+        java.util.Map<String, String> r = new java.util.HashMap<>();
+        jdbc.sql("""
+                SELECT DISTINCT ON (e.sn) e.sn, l.numero FROM ejecuciones_onu e JOIN lotes l ON l.id = e.lote_id
+                WHERE l.tipo = 'SERVICIO_WAN' AND NOT l.simulacion AND e.estado = 'COMPLETADA'
+                ORDER BY e.sn, e.terminada_en DESC
+                """).query(rs -> {
+                    r.put(rs.getString("sn").toUpperCase(java.util.Locale.ROOT), rs.getString("numero"));
+                });
+        return r;
     }
 
     @Override

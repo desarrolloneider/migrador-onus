@@ -86,3 +86,9 @@ ALTER TABLE lote_items ADD CONSTRAINT ck_lote_items_entra CHECK (grupo <> 'ENTRA
 ALTER TABLE lotes ADD COLUMN tipo VARCHAR(20) NOT NULL DEFAULT 'PERFIL_TR069';
 ALTER TABLE lotes ADD CONSTRAINT ck_lotes_tipo CHECK (tipo IN ('PERFIL_TR069', 'VLAN_GESTION'));
 --rollback ALTER TABLE lotes DROP COLUMN tipo;
+
+--changeset migrador:lotes-012-tipo-servicio-wan
+--comment: Lote "Servicio WAN": X_HW_SERVICELIST en GenieACS (INTERNET a TR069_INTERNET y TR069 a OTHER), quitar la VLAN 46 y volver a poner GUAJIRANET1 (probado de punta a punta el 14 de octubre).
+ALTER TABLE lotes DROP CONSTRAINT ck_lotes_tipo;
+ALTER TABLE lotes ADD CONSTRAINT ck_lotes_tipo CHECK (tipo IN ('PERFIL_TR069', 'VLAN_GESTION', 'SERVICIO_WAN'));
+--rollback ALTER TABLE lotes DROP CONSTRAINT ck_lotes_tipo; ALTER TABLE lotes ADD CONSTRAINT ck_lotes_tipo CHECK (tipo IN ('PERFIL_TR069', 'VLAN_GESTION'));

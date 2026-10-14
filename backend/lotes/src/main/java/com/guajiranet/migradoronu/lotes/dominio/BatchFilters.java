@@ -15,6 +15,8 @@ public record BatchFilters(String marca, String oltCodigo, String tarjeta, Integ
     public static final String PERFIL_TR069 = "PERFIL_TR069";
     /** El lote pone la IP de gestión DHCP en la VLAN de gestión (46) en SmartOLT. */
     public static final String VLAN_GESTION = "VLAN_GESTION";
+    /** El lote cambia X_HW_SERVICELIST en GenieACS, quita la VLAN 46 y vuelve a poner el perfil TR-069. */
+    public static final String SERVICIO_WAN = "SERVICIO_WAN";
 
     public BatchFilters(String marca, String oltCodigo, String tarjeta, Integer pon, List<String> perfilesOrigen, List<String> sns) {
         this(marca, oltCodigo, tarjeta, pon, perfilesOrigen, sns, null);
@@ -42,7 +44,7 @@ public record BatchFilters(String marca, String oltCodigo, String tarjeta, Integ
         perfilesOrigen = perfilesOrigen == null || perfilesOrigen.isEmpty() ? null : List.copyOf(perfilesOrigen);
         sns = sns == null || sns.isEmpty() ? null : List.copyOf(sns);
         tipo = tipo == null || tipo.isBlank() ? PERFIL_TR069 : tipo.strip().toUpperCase(java.util.Locale.ROOT);
-        if (!tipo.equals(PERFIL_TR069) && !tipo.equals(VLAN_GESTION)) {
+        if (!tipo.equals(PERFIL_TR069) && !tipo.equals(VLAN_GESTION) && !tipo.equals(SERVICIO_WAN)) {
             throw new IllegalArgumentException("Tipo de lote desconocido: " + tipo);
         }
     }

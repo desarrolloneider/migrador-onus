@@ -17,6 +17,13 @@ public record ClassifyOnusCommand(String marca, String oltCodigo, String tarjeta
         return VLAN_GESTION.equals(tipo);
     }
 
+    /** Lote "Servicio WAN": X_HW_SERVICELIST en GenieACS y quitar la VLAN de gestión. */
+    public static final String SERVICIO_WAN = "SERVICIO_WAN";
+
+    public boolean esServicioWan() {
+        return SERVICIO_WAN.equals(tipo);
+    }
+
     /** Las ONUs sin perfil TR-069, cuando se escogen como origen. */
     public static final String SIN_PERFIL = "SIN_PERFIL";
 

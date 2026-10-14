@@ -11,4 +11,12 @@ public interface OnuParticipationQueryPort {
     Optional<String> activeBatchNumberOf(String sn);
 
     Optional<UnreviewedFailure> unreviewedFailureOf(String sn);
+
+    /**
+     * Las ONUs que ya terminaron el paso 3 (Servicio WAN) en un lote real, con el número de ese lote. El paso 1 las deja
+     * fuera: ponerles otra vez la VLAN 46 las devolvería a un estado a medias.
+     */
+    default java.util.Map<String, String> servicioWanTerminado() {
+        return java.util.Map.of();
+    }
 }
