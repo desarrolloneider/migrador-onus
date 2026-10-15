@@ -33,6 +33,8 @@ public final class SesionConsolaOlt implements AutoCloseable {
     private static final Pattern PROMPT = Pattern.compile("(?m)^[\\w.\\-]+(\\([\\w\\-/ ]+\\))?[>#]\\s*$");
     private static final Pattern MAS = Pattern.compile("-+\\s*More\\s*\\(.*?\\)\\s*-+");
     private static final Pattern PREGUNTA_OPCIONES = Pattern.compile("\\{\\s*<cr>[^}]*\\}:\\s*$");
+    /** "Are you sure to ...? (y/n)[n]:": solo se contesta que sí a {@code ont reset}; a cualquier otra cosa, que no. */
+    private static final Pattern PREGUNTA_SI_NO = Pattern.compile("\\(y/n\\)\\s*\\[[yn]\\]\\s*:\\s*$");
     private static final Pattern ANSI = Pattern.compile("\u001B\\[[0-9;?]*[A-Za-z]|\u001B\\[\\d*D|[\b\r]");
 
     /** Tiempo sin datos después del prompt para dar por terminado un comando. */
@@ -184,6 +186,12 @@ public final class SesionConsolaOlt implements AutoCloseable {
                         recibido.reset();
                         recibido.write(MAS.matcher(texto).replaceAll("").getBytes(StandardCharsets.UTF_8));
                         enviar(" ");
+                        continue;
+                    }
+                    if (PREGUNTA_SI_NO.matcher(texto).find()) {
+                        recibido.reset();
+                        recibido.write(PREGUNTA_SI_NO.matcher(texto).replaceAll("").getBytes(StandardCharsets.UTF_8));
+                        enviar(comando != null && comando.strip().startsWith("ont reset ") ? "y\n" : "n\n");
                         continue;
                     }
                     if (PREGUNTA_OPCIONES.matcher(texto).find()) {

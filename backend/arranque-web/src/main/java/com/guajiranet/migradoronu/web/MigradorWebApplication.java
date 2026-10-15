@@ -66,6 +66,9 @@ public class MigradorWebApplication {
         if (args.length > 1 && args[0].equals("consola-prueba")) {
             System.exit(pruebaDeConsola(args[1], args.length > 3 ? args[2] : null, args.length > 3 ? Integer.valueOf(args[3]) : null));
         }
+        if (args.length > 3 && args[0].equals("reiniciar-onu")) {
+            System.exit(reiniciarOnu(args[1], args[2], Integer.parseInt(args[3])));
+        }
         if (args.length > 1 && args[0].equals("perfiles-crudo")) {
             System.exit(perfilesCrudo(args[1]));
         }
@@ -104,6 +107,40 @@ public class MigradorWebApplication {
     }
 
     /** Solo lectura: entra por SSH a la OLT registrada y ejecuta los display del procedimiento. */
+    /** Reinicia UNA ONU desde la OLT: {@code reiniciar-onu <OLT> <F/S/P> <ONT>} (ont reset, por OMCI). */
+    private static int reiniciarOnu(String codigo, String fsp, int ont) {
+        try (ConfigurableApplicationContext contexto = contextoDeConsola()) {
+            OltSettings olt = contexto.getBean(QueryParametersPort.class).oltSettings(codigo).orElse(null);
+            if (olt == null || olt.direccion() == null || olt.puerto() == null) {
+                System.out.println("La OLT " + codigo + " no está registrada o no tiene dirección y puerto.");
+                return 2;
+            }
+            var entorno = contexto.getEnvironment();
+            String prefijo = "CONSOLA_" + codigo.toUpperCase(java.util.Locale.ROOT).replaceAll("[^A-Z0-9]", "_");
+            String[] p = fsp.split("/");
+            try (var c = SesionConsolaOlt.abrir(olt.direccion(), olt.puerto(),
+                    com.guajiranet.migradoronu.ensamblaje.consola.ConsolasSshPorOlt.credencial(entorno, prefijo, "_USUARIO"),
+                    com.guajiranet.migradoronu.ensamblaje.consola.ConsolasSshPorOlt.credencial(entorno, prefijo, "_CLAVE"), entorno.getProperty(prefijo + "_HUELLA"),
+                    Duration.ofSeconds(10), Duration.ofSeconds(90))) {
+                c.ejecutar("enable");
+                c.ejecutar("config");
+                c.ejecutar("interface gpon " + p[0] + "/" + p[1]);
+                String comando = "ont reset " + p[2] + " " + ont;
+                System.out.println(">>> " + comando);
+                System.out.println(c.ejecutar(comando));
+                c.ejecutar("quit");
+                System.out.println(">>> display ont info " + p[0] + " " + p[1] + " " + p[2] + " " + ont + " (Run state / Last down cause)");
+                c.ejecutar("quit");
+                for (String linea : c.ejecutar("display ont info " + p[0] + " " + p[1] + " " + p[2] + " " + ont).split("\n")) {
+                    if (linea.matches("(?i)\\s*(Run state|Last down cause|Last down time|Last up time)\\s*:.*")) {
+                        System.out.println(linea);
+                    }
+                }
+            }
+            return 0;
+        }
+    }
+
     private static int pruebaDeConsola(String codigo, String puertoOnu, Integer ontId) {
         try (ConfigurableApplicationContext contexto = contextoDeConsola()) {
             OltSettings olt = contexto.getBean(QueryParametersPort.class).oltSettings(codigo).orElse(null);

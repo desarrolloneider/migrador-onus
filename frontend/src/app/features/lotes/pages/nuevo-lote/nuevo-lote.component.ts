@@ -656,8 +656,11 @@ export class NuevoLoteComponent {
 
   /** Las que ya tienen el perfil nuevo no se seleccionan: no hay nada que cambiarles. */
   protected seleccionable(o: { perfil: string | null; modoGestion?: string | null; vlanGestion?: number | null; tr069?: boolean; tresPasosListos?: boolean }): boolean {
-    // Las que ya terminaron los 3 pasos no se escogen en ningún paso.
-    if (o.tresPasosListos) return false;
+    // Las que ya terminaron los 3 pasos no vuelven a los pasos 1 y 3. En el paso 2 sí, si les falta el perfil: toda ONU
+    // tiene que quedar con GUAJIRANET1 para que GenieACS la administre (por ejemplo, el cambio de contraseña).
+    if (o.tresPasosListos) {
+      return this.tipo() === 'PERFIL_TR069' && o.perfil?.toUpperCase() !== this.perfilDestino.toUpperCase();
+    }
     if (this.tipo() === 'SERVICIO_WAN') {
       // Servicio WAN (va al final): las que ya tienen la VLAN 46, que es por donde GenieACS les entrega el cambio.
       return this.tieneGestion({ modoGestion: o.modoGestion ?? null, vlanGestion: o.vlanGestion ?? null });

@@ -83,7 +83,8 @@ public class GenieAcsPorApi implements GenieAcsPort, com.guajiranet.migradoronu.
         String ip1 = valor(d.get(c1 + "ExternalIPAddress"));
         String ip2 = valor(d.get(c2 + "ExternalIPAddress"));
         String url = valor(d.get("InternetGatewayDevice.ManagementServer.ConnectionRequestURL"));
-        if (url == null || ip1 == null || ip2 == null || ip1.equals(ip2) || !d.has(c1 + "X_HW_SERVICELIST") || !d.has(c2 + "X_HW_SERVICELIST")) {
+        // La IP de la conexión 1 a veces tampoco viene: basta con saber si el TR-069 contesta por la de gestión (conexión 2).
+        if (url == null || ip2 == null || ip2.isBlank() || ip2.startsWith("0.") || !d.has(c1 + "X_HW_SERVICELIST") || !d.has(c2 + "X_HW_SERVICELIST")) {
             return Map.of();
         }
         String host = url.replaceFirst("^[a-z]+://", "").replaceFirst("[:/].*$", "");
@@ -91,7 +92,7 @@ public class GenieAcsPorApi implements GenieAcsPort, com.guajiranet.migradoronu.
         if (host.equals(ip2)) {
             r.put(c1 + "X_HW_SERVICELIST", "INTERNET");
             r.put(c2 + "X_HW_SERVICELIST", "TR069");
-        } else if (host.equals(ip1)) {
+        } else if (host.equals(ip1) || (!host.isBlank() && !host.startsWith("0."))) {
             r.put(c1 + "X_HW_SERVICELIST", "TR069_INTERNET");
             r.put(c2 + "X_HW_SERVICELIST", "OTHER");
         }

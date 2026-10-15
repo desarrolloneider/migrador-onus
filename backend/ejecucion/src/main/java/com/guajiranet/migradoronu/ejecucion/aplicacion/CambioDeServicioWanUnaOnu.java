@@ -108,13 +108,25 @@ public class CambioDeServicioWanUnaOnu {
             // Si GenieACS no la alcanza al instante, la lectura queda pendiente hasta que la ONU se reporte sola (cada 30 s
             // por la VLAN de gestión): se espera hasta 5 minutos a que lo haga con sus conexiones leídas.
             boolean reiniciadaEnLectura = false;
+            boolean seReporto = false;
             for (int i = 0; i < ESPERAS_LECTURA && !respondio; i++) {
                 esperar.accept(ESPERA);
-                if (real && !reiniciadaEnLectura && (long) (i + 1) * ESPERA.toMillis() >= REINICIAR_SI_NO_CONFIRMA.toMillis()) {
+                // Solo se reinicia si está callada: si ya se reportó, reiniciarla solo la demora (LOT-2026-000125).
+                if (real && !reiniciadaEnLectura && !seReporto && (long) (i + 1) * ESPERA.toMillis() >= REINICIAR_SI_NO_CONFIRMA.toMillis()) {
                     reiniciadaEnLectura = true;
-                    reiniciar(r, t, "P03", "no se reportaba para la lectura");
+                    reiniciar(r, t, "P03", "no se reportaba para la lectura", consola, candado);
                 }
                 EstadoServicioWan x = genie.leer(t.sn()).orElse(antes);
+                if (x.ultimoInformMs() > informAntes && !seReporto) {
+                    seReporto = true;
+                    // Se reportó pero sin las conexiones leídas: se vuelve a pedir la lectura para el próximo reporte.
+                    try {
+                        genie.refrescar(x.idDispositivo(), rutas);
+                    } catch (RuntimeException ignorada) {
+                        // Se sigue esperando.
+                    }
+                    x = genie.leer(t.sn()).orElse(x);
+                }
                 if (x.ultimoInformMs() > informAntes && x.rutaServicio().isPresent() && x.rutaTr069().isPresent()) {
                     if (i > 0 || x.servicios().keySet().containsAll(rutas)) {
                         antes = x;
@@ -167,9 +179,10 @@ public class CambioDeServicioWanUnaOnu {
             boolean reiniciada = false;
             for (int i = 0; i < VERIFICACIONES && !despues.listo(); i++) {
                 esperar.accept(ESPERA);
-                if (!reiniciada && (long) (i + 1) * ESPERA.toMillis() >= REINICIAR_SI_NO_CONFIRMA.toMillis()) {
+                if (!reiniciada && despues.ultimoInformMs() <= antes.ultimoInformMs()
+                        && (long) (i + 1) * ESPERA.toMillis() >= REINICIAR_SI_NO_CONFIRMA.toMillis()) {
                     reiniciada = true;
-                    reiniciar(r, t, "P06", "no confirmaba el cambio");
+                    reiniciar(r, t, "P06", "no confirmaba el cambio", consola, candado);
                 }
                 try {
                     if (i % 6 == 5) {
@@ -244,17 +257,42 @@ public class CambioDeServicioWanUnaOnu {
         return null;
     }
 
-    /** Reinicia la ONU por SmartOLT para que se reporte ya. Si no se puede, se sigue esperando igual. */
-    private void reiniciar(Registro r, TrabajoOnu t, String paso, String porque) {
+    /**
+     * Reinicia la ONU para que se reporte ya. Primero en la OLT ({@code ont reset}, por OMCI: no depende de SmartOLT ni del
+     * TR-069). El reboot de SmartOLT respondía "Device reboot command sent" sin reiniciar algunas ONUs (14 de octubre):
+     * queda solo como respaldo si la OLT no acepta el comando. Si nada funciona, se sigue esperando igual.
+     */
+    private void reiniciar(Registro r, TrabajoOnu t, String paso, String porque, Supplier<OltConsolePort> consola, Object candado) {
+        String comando = "ont reset " + t.pon() + " " + t.onuId();
+        String respuesta;
+        boolean bien;
+        synchronized (candado) {
+            try {
+                OltConsolePort c = consola.get();
+                c.ejecutar("enable");
+                c.ejecutar("config");
+                c.ejecutar("interface gpon " + t.tarjeta().strip());
+                respuesta = c.ejecutar(comando);
+                c.ejecutar("quit");
+                bien = !com.guajiranet.migradoronu.procedimientos.dominio.RespuestaHuawei.esError(respuesta);
+            } catch (RuntimeException e) {
+                respuesta = String.valueOf(e.getMessage());
+                bien = false;
+            }
+        }
+        r.paso(paso, "OLT: " + comando + " (tarjeta " + t.tarjeta() + ")", respuesta, bien, bien
+                ? "La ONU " + porque + " en " + REINICIAR_SI_NO_CONFIRMA.toSeconds() + " s: se reinició desde la OLT para que se reporte ya."
+                : "La OLT no reinició la ONU; se intenta por SmartOLT.");
+        if (bien) {
+            return;
+        }
         try {
             Optional<EstadoGestionOnu> g = smartOlt.leer(t.sn());
             if (g.isEmpty()) {
-                r.paso(paso, "SmartOLT: reiniciar ONU", "", false, "No se reinició: SmartOLT no tiene la ONU.");
                 return;
             }
             smartOlt.reiniciar(g.get().idExterno());
-            r.paso(paso, "SmartOLT: reiniciar ONU (" + g.get().idExterno() + ")", "OK", true,
-                    "La ONU " + porque + " en " + REINICIAR_SI_NO_CONFIRMA.toSeconds() + " s: se reinició para que se reporte ya.");
+            r.paso(paso, "SmartOLT: reiniciar ONU (" + g.get().idExterno() + ")", "OK", true, "Reinicio pedido a SmartOLT.");
         } catch (RuntimeException e) {
             r.paso(paso, "SmartOLT: reiniciar ONU", String.valueOf(e.getMessage()), false, "No se pudo reiniciar; se sigue esperando.");
         }
