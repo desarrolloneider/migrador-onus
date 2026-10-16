@@ -53,9 +53,51 @@ public final class ClienteJson {
                 .build();
     }
 
+    /**
+     * Espacio mínimo entre dos peticiones al mismo sistema, en todo el proceso. SmartOLT bloqueó la IP por exceso de
+     * peticiones el 15 de octubre. SmartOLT permite 10 por segundo; aquí como mucho una cada 150 ms (unas 6).
+     */
+    private static final Map<String, Duration> ESPACIADO = Map.of("SmartOLT", Duration.ofMillis(150));
+    private static final java.util.concurrent.ConcurrentHashMap<String, long[]> ULTIMA_PETICION = new java.util.concurrent.ConcurrentHashMap<>();
+    /** Peticiones por hora como máximo (SmartOLT: 1000 por hora; se deja margen). */
+    private static final Map<String, Integer> POR_HORA = Map.of("SmartOLT", 900);
+    private static final java.util.concurrent.ConcurrentHashMap<String, java.util.ArrayDeque<Long>> ENVIADAS = new java.util.concurrent.ConcurrentHashMap<>();
+
+    /** Espera su turno antes de mandar una petición, si el sistema tiene espaciado. */
+    private void turno() {
+        Duration espacio = ESPACIADO.get(sistema);
+        if (espacio == null) {
+            return;
+        }
+        long[] ultima = ULTIMA_PETICION.computeIfAbsent(sistema, s -> new long[1]);
+        synchronized (ultima) {
+            long falta = ultima[0] + espacio.toMillis() - System.currentTimeMillis();
+            if (falta > 0) {
+                esperar(Duration.ofMillis(falta));
+            }
+            Integer maximo = POR_HORA.get(sistema);
+            if (maximo != null) {
+                java.util.ArrayDeque<Long> enviadas = ENVIADAS.computeIfAbsent(sistema, s -> new java.util.ArrayDeque<>());
+                long hace1h = System.currentTimeMillis() - 3_600_000;
+                while (!enviadas.isEmpty() && enviadas.peekFirst() < hace1h) {
+                    enviadas.pollFirst();
+                }
+                if (enviadas.size() >= maximo) {
+                    // Se espera a que salga de la ventana la más vieja, antes que pasarse y que bloqueen la IP.
+                    LOG.warn("{}: {} peticiones en la última hora; se espera para no pasar el límite", sistema, enviadas.size());
+                    esperar(Duration.ofMillis(Math.max(0, enviadas.peekFirst() + 3_600_000 - System.currentTimeMillis())));
+                    enviadas.pollFirst();
+                }
+                enviadas.addLast(System.currentTimeMillis());
+            }
+            ultima[0] = System.currentTimeMillis();
+        }
+    }
+
     public JsonNode get(String ruta, Map<String, ?> parametros) {
         int esperas429 = 0;
         for (int intento = 1; ; intento++) {
+            turno();
             try {
                 String cuerpo = rest.get().uri(b -> construir(b, ruta, parametros)).retrieve().body(String.class);
                 return json.readTree(cuerpo == null ? "null" : cuerpo);
@@ -99,6 +141,7 @@ public final class ClienteJson {
         org.springframework.util.LinkedMultiValueMap<String, String> cuerpo = new org.springframework.util.LinkedMultiValueMap<>();
         campos.forEach(cuerpo::add);
         for (int esperas429 = 0; ; esperas429++) {
+            turno();
             try {
                 String respuesta = rest.post().uri(ruta).contentType(org.springframework.http.MediaType.APPLICATION_FORM_URLENCODED)
                         .body(cuerpo).retrieve().body(String.class);

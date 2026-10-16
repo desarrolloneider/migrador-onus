@@ -9,6 +9,8 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import com.guajiranet.migradoronu.comun.puertos.AuditAction;
 import com.guajiranet.migradoronu.comun.puertos.AuditEntry;
@@ -25,9 +27,11 @@ import com.guajiranet.migradoronu.ejecucion.puertos.salida.OltConsolePort;
 /**
  * Cierre del procedimiento del NOC en una ONU, probado de punta a punta en OLT_FONSECA 0/5/11 ONT 55 el 14 de octubre:
  * <ol>
- *   <li>P03: lee en vivo en GenieACS el X_HW_SERVICELIST de sus conexiones WAN.</li>
- *   <li>P05: si hace falta, INTERNET a TR069_INTERNET y TR069 a OTHER (el TR-069 pasa a la IP de servicio).</li>
- *   <li>P06: verifica en GenieACS (la ONU puede tardar unos minutos: corta la sesión al cambiar sus conexiones).</li>
+ *   <li>P03: foto previa: el X_HW_SERVICELIST que tiene GenieACS y, si ahí no está listo, las WAN según la OLT.</li>
+ *   <li>P05: si hace falta, le pone la etiqueta {@value #ETIQUETA}: el preset de GenieACS le cambia INTERNET a
+ *       TR069_INTERNET y TR069 a OTHER en cuanto se reporte (el TR-069 pasa a la IP de servicio).</li>
+ *   <li>P06: verifica en GenieACS y en la OLT (la ONU corta la sesión al cambiar sus conexiones y GenieACS puede tardar
+ *       en registrarla).</li>
  *   <li>P07: quita la VLAN de gestión en SmartOLT (que de paso le quita el perfil TR-069 en la OLT).</li>
  *   <li>P08: le vuelve a poner GUAJIRANET1 en la OLT, para que quede registrado y por si la ONU se resetea.</li>
  * </ol>
@@ -37,15 +41,13 @@ public class CambioDeServicioWanUnaOnu {
 
     /** Cada cuánto se vuelve a mirar GenieACS (la ONU se reporta cada pocos segundos desde que bajaron el intervalo). */
     static final Duration ESPERA = Duration.ofSeconds(5);
-    /** Hasta 5 minutos esperando la verificación (con el reinicio a los 30 s, la ONU confirma en un par de minutos). */
-    static final int VERIFICACIONES = 60;
-    /** Hasta 5 minutos esperando que la ONU se reporte para la lectura previa (tras el reinicio a los 30 s tarda 2-3 min en prender). */
-    static final int ESPERAS_LECTURA = 60;
     /**
-     * Si la ONU no se reporta en este tiempo, se reinicia por SmartOLT (una vez en la lectura y una en la verificación):
-     * al prender se reporta enseguida y recibe lo pendiente. Probado el 14 de octubre: de ~15 minutos a ~75 segundos.
+     * Hasta 5 minutos esperando la verificación. Las ONUs no se reinician nunca (decisión del 15 de octubre): tienen que
+     * reaccionar solas, por connection request o en su siguiente reporte.
      */
-    static final Duration REINICIAR_SI_NO_CONFIRMA = Duration.ofSeconds(30);
+    static final int VERIFICACIONES = 60;
+    /** La etiqueta de GenieACS que activa el preset "migrador_servicio_wan" (creado el 16 de octubre). */
+    public static final String ETIQUETA = "migrar_wan";
     static final List<String> RUTAS_POR_DEFECTO = List.of(
             "InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnection.1.X_HW_SERVICELIST",
             "InternetGatewayDevice.WANDevice.1.WANConnectionDevice.2.WANIPConnection.1.X_HW_SERVICELIST");
@@ -88,7 +90,8 @@ public class CambioDeServicioWanUnaOnu {
     public Resultado ejecutar(TrabajoOnu t, boolean real, Contexto ctx, Supplier<OltConsolePort> consola, Object candado, boolean diferirGuardado) {
         Registro r = new Registro(t, ctx);
         String posicion = t.oltCodigo() + " " + t.tarjeta() + "/" + t.pon() + " ONT " + t.onuId();
-        // P03: lectura en vivo (lo guardado en GenieACS puede tener meses).
+        // P03: foto previa. GenieACS puede estar viejo (la ONU solo actualiza lo que reporta); la OLT dice lo que la ONU
+        // tiene de verdad (display ont wan-info), sin depender de que se reporte.
         EstadoServicioWan antes;
         try {
             Optional<EstadoServicioWan> guardado = genie.leer(t.sn());
@@ -97,67 +100,29 @@ public class CambioDeServicioWanUnaOnu {
                 return fallarYLimpiar(r, t, real, ctx, consola, candado, diferirGuardado, "P03", "FALLO_FOTO_PREVIA",
                         "La ONU " + t.sn() + " no está registrada en GenieACS.");
             }
-            // Si GenieACS nunca leyó sus conexiones, se piden las dos de siempre (1: internet, 2: TR-069).
-            List<String> rutas = new ArrayList<>(guardado.get().servicios().keySet());
-            if (rutas.isEmpty()) {
-                rutas = RUTAS_POR_DEFECTO;
-            }
-            long informAntes = guardado.get().ultimoInformMs();
-            boolean respondio = genie.refrescar(guardado.get().idDispositivo(), rutas);
-            antes = genie.leer(t.sn()).orElse(guardado.get());
-            // Si GenieACS no la alcanza al instante, la lectura queda pendiente hasta que la ONU se reporte sola (cada 30 s
-            // por la VLAN de gestión): se espera hasta 5 minutos a que lo haga con sus conexiones leídas.
-            boolean reiniciadaEnLectura = false;
-            boolean seReporto = false;
-            for (int i = 0; i < ESPERAS_LECTURA && !respondio; i++) {
-                esperar.accept(ESPERA);
-                // Solo se reinicia si está callada: si ya se reportó, reiniciarla solo la demora (LOT-2026-000125).
-                if (real && !reiniciadaEnLectura && !seReporto && (long) (i + 1) * ESPERA.toMillis() >= REINICIAR_SI_NO_CONFIRMA.toMillis()) {
-                    reiniciadaEnLectura = true;
-                    reiniciar(r, t, "P03", "no se reportaba para la lectura", consola, candado);
-                }
-                EstadoServicioWan x = genie.leer(t.sn()).orElse(antes);
-                if (x.ultimoInformMs() > informAntes && !seReporto) {
-                    seReporto = true;
-                    // Se reportó pero sin las conexiones leídas: se vuelve a pedir la lectura para el próximo reporte.
-                    try {
-                        genie.refrescar(x.idDispositivo(), rutas);
-                    } catch (RuntimeException ignorada) {
-                        // Se sigue esperando.
-                    }
-                    x = genie.leer(t.sn()).orElse(x);
-                }
-                if (x.ultimoInformMs() > informAntes && x.rutaServicio().isPresent() && x.rutaTr069().isPresent()) {
-                    if (i > 0 || x.servicios().keySet().containsAll(rutas)) {
-                        antes = x;
-                        respondio = true;
-                    }
-                }
-            }
-            if (!respondio) {
-                r.paso("P03", "GenieACS: leer X_HW_SERVICELIST en vivo", antes.describir(), false, "La ONU no respondió a GenieACS.");
-                return fallarYLimpiar(r, t, real, ctx, consola, candado, diferirGuardado, "P03", "FALLO_SISTEMA_NO_RESPONDE",
-                        "La ONU no se reportó a GenieACS en 5 minutos, ni reiniciándola.");
-            }
+            antes = guardado.get();
         } catch (RuntimeException e) {
             return r.fin(real, Final.FALLIDA, "P03", "FALLO_SISTEMA_NO_RESPONDE", "No se pudo consultar GenieACS: " + e.getMessage());
         }
-        r.paso("P03", "GenieACS: leer X_HW_SERVICELIST en vivo", antes.describir(), true, "Foto previa en GenieACS: " + antes.describir() + ".");
-        Optional<String> servicio = antes.rutaServicio();
-        Optional<String> tr069 = antes.rutaTr069();
-        if (servicio.isEmpty() || tr069.isEmpty()) {
+        boolean yaListo = antes.listo();
+        if (yaListo) {
+            r.paso("P03", "GenieACS: X_HW_SERVICELIST guardado", antes.describir(), true,
+                    "GenieACS ya la muestra con TR069_INTERNET/OTHER: solo falta quitar la VLAN 46.");
+        } else {
+            Optional<String> wan = leerWanEnOlt(t, consola, candado);
+            yaListo = wan.map(CambioDeServicioWanUnaOnu::listoEnOlt).orElse(false);
+            r.paso("P03", comandoWan(t), wan.orElse("sin respuesta de la OLT"), true, yaListo
+                    ? "La OLT muestra la ONU con Tr069+Internet / Other: el cambio ya está hecho (GenieACS aún no se enteró)."
+                    : "Foto previa: GenieACS " + antes.describir() + "; OLT " + wan.map(CambioDeServicioWanUnaOnu::servicios).orElse("sin dato") + ".");
+        }
+        // Con valores raros en GenieACS (por ejemplo dos TR069_INTERNET) no se toca: puede ser otra configuración.
+        if (!yaListo && !antes.servicios().isEmpty() && (antes.rutaServicio().isEmpty() || antes.rutaTr069().isEmpty())) {
             return fallarYLimpiar(r, t, real, ctx, consola, candado, diferirGuardado, "P03", "FALLO_FOTO_PREVIA",
                     "La ONU no tiene las dos conexiones esperadas (INTERNET y TR069): " + antes.describir() + ".");
         }
-        boolean yaListo = antes.listo();
-        Map<String, String> cambios = new LinkedHashMap<>();
-        if (!yaListo) {
-            cambios.put(servicio.get(), "TR069_INTERNET");
-            cambios.put(tr069.get(), "OTHER");
-        }
         if (!real) {
             if (!yaListo) {
-                r.paso("SIM", "GenieACS: " + servicio.get() + " = TR069_INTERNET; " + tr069.get() + " = OTHER", "", true, "Simulación: no se mandó.");
+                r.paso("SIM", "GenieACS: etiqueta " + ETIQUETA + " (INTERNET = TR069_INTERNET; TR069 = OTHER)", "", true, "Simulación: no se mandó.");
             }
             r.paso("SIM", "SmartOLT: IP de gestión Inactiva", "", true, "Simulación: no se mandó.");
             r.paso("SIM", "OLT: perfil " + t.perfilDestino(), "", true, "Simulación: no se mandó.");
@@ -165,48 +130,186 @@ public class CambioDeServicioWanUnaOnu {
                     : "Simulación terminada: la ONU cumple las condiciones; no se cambió nada.");
         }
         if (!yaListo) {
-            // P05: un solo envío. La ONU suele cortar la sesión al cambiar sus conexiones: se verifica en P06.
-            boolean confirmo;
-            try {
-                confirmo = genie.cambiar(antes.idDispositivo(), cambios);
-            } catch (RuntimeException e) {
-                confirmo = false;
+            String id = antes.idDispositivo();
+            // Fallos viejos en GenieACS hacen que lo nuevo espere detrás de reintentos cada vez más largos: se borran primero.
+            int borrados = genie.limpiarFallos(id);
+            if (borrados > 0) {
+                r.paso("P05", "GenieACS: borrar fallos del equipo", borrados + " fallo(s)", true,
+                        "Se borraron " + borrados + " fallo(s) viejos de la ONU en GenieACS para que el cambio no espere detrás.");
             }
-            r.paso("P05", "GenieACS: " + servicio.get() + " = TR069_INTERNET; " + tr069.get() + " = OTHER", confirmo ? "done" : "sin confirmar",
-                    true, confirmo ? "La ONU aceptó el cambio." : "Cambio enviado; la ONU no lo confirmó en el momento (normal: reinicia sus conexiones).");
-            // P06: verificar.
-            EstadoServicioWan despues = antes;
-            boolean reiniciada = false;
-            for (int i = 0; i < VERIFICACIONES && !despues.listo(); i++) {
-                esperar.accept(ESPERA);
-                if (!reiniciada && despues.ultimoInformMs() <= antes.ultimoInformMs()
-                        && (long) (i + 1) * ESPERA.toMillis() >= REINICIAR_SI_NO_CONFIRMA.toMillis()) {
-                    reiniciada = true;
-                    reiniciar(r, t, "P06", "no confirmaba el cambio", consola, candado);
+            List<String> rutas = antes.servicios().isEmpty() ? RUTAS_POR_DEFECTO : new ArrayList<>(antes.servicios().keySet());
+            // P05: con la etiqueta, el preset de GenieACS hace el cambio la próxima vez que la ONU se reporte, sin que
+            // GenieACS tenga que alcanzarla (con IP de gestión repetida no la alcanza). Se la despierta por si acaso, sin
+            // esperar: si GenieACS no la alcanza tarda ~30 s en rendirse (LOT-2026-000149).
+            java.util.concurrent.atomic.AtomicBoolean despertando = new java.util.concurrent.atomic.AtomicBoolean();
+            if (genie.etiquetar(id, ETIQUETA, true)) {
+                despertarSinEsperar(id, rutas, despertando);
+                r.paso("P05", "GenieACS: etiqueta " + ETIQUETA, "esperando su reporte", true,
+                        "Etiqueta puesta: el preset de GenieACS le cambia INTERNET a TR069_INTERNET y TR069 a OTHER en cuanto se reporte.");
+            } else {
+                // Sin la etiqueta, el cambio se manda como antes, si se sabe qué conexión es cuál.
+                Optional<String> servicio = antes.rutaServicio();
+                Optional<String> tr069 = antes.rutaTr069();
+                if (servicio.isEmpty() || tr069.isEmpty()) {
+                    r.paso("P05", "GenieACS: etiqueta " + ETIQUETA, "rechazada", false, "GenieACS no aceptó la etiqueta.");
+                    return fallarYLimpiar(r, t, true, ctx, consola, candado, diferirGuardado, "P05", "FALLO_SISTEMA_NO_RESPONDE",
+                            "GenieACS no aceptó la etiqueta " + ETIQUETA + " y no tiene leídas las conexiones de la ONU.");
                 }
+                boolean confirmo;
                 try {
-                    if (i % 6 == 5) {
-                        genie.refrescar(antes.idDispositivo(), List.of(servicio.get(), tr069.get()));
-                    }
+                    confirmo = genie.cambiar(id, Map.of(servicio.get(), "TR069_INTERNET", tr069.get(), "OTHER"));
+                } catch (RuntimeException e) {
+                    confirmo = false;
+                }
+                r.paso("P05", "GenieACS: " + servicio.get() + " = TR069_INTERNET; " + tr069.get() + " = OTHER", confirmo ? "done" : "sin confirmar",
+                        true, confirmo ? "La ONU aceptó el cambio." : "Cambio enviado; la ONU no lo confirmó en el momento (normal: reinicia sus conexiones).");
+            }
+            // P06: verificar en GenieACS cada 5 s y en la OLT cada 10 s (GenieACS tarda ~10 minutos en registrar la
+            // sesión en que la ONU cambió: 3DF122AE, 16 de octubre). Cada 30 s se la vuelve a despertar.
+            EstadoServicioWan despues = antes;
+            String verificadoEn = null;
+            for (int i = 0; i < VERIFICACIONES && verificadoEn == null; i++) {
+                esperar.accept(ESPERA);
+                try {
                     despues = genie.leer(t.sn()).orElse(despues);
                 } catch (RuntimeException ignorada) {
                     // Se vuelve a intentar en la siguiente vuelta.
                 }
+                if (despues.listo()) {
+                    verificadoEn = "GenieACS: " + despues.describir();
+                } else if (i % 2 == 1) {
+                    Optional<String> wan = leerWanEnOlt(t, consola, candado);
+                    if (wan.map(CambioDeServicioWanUnaOnu::listoEnOlt).orElse(false)) {
+                        verificadoEn = "la OLT: " + servicios(wan.get());
+                    } else if (i % 6 == 5) {
+                        despertarSinEsperar(id, rutas, despertando);
+                    }
+                }
             }
-            boolean quedo = despues.listo();
-            r.paso("P06", "GenieACS: leer X_HW_SERVICELIST", despues.describir(), quedo, quedo ? "Verificado en GenieACS: " + despues.describir() + "."
-                    : "GenieACS no muestra el cambio: " + despues.describir() + ".");
+            boolean quedo = verificadoEn != null;
+            r.paso("P06", "GenieACS / OLT: verificar servicio WAN", despues.describir(), quedo, quedo ? "Verificado en " + verificadoEn + "."
+                    : "Ni GenieACS ni la OLT muestran el cambio: " + despues.describir() + ".");
             if (!quedo) {
+                // Lo que GenieACS dice de ese equipo (por ejemplo, si la ONU rechazó el cambio): queda en la auditoría.
+                List<String> fallosGenie = genie.fallos(antes.idDispositivo());
+                r.paso("P06", "GenieACS: fallos del equipo", String.join("\n", fallosGenie), fallosGenie.isEmpty(),
+                        fallosGenie.isEmpty() ? "GenieACS no tiene fallos de la ONU: el cambio no le llegó o no lo aplicó."
+                                : "GenieACS tiene fallos de la ONU: " + String.join(" | ", fallosGenie));
                 return fallarYLimpiar(r, t, true, ctx, consola, candado, diferirGuardado, "P06", "FALLO_VERIFICACION",
-                        "GenieACS no confirmó TR069_INTERNET/OTHER en 5 minutos, ni reiniciándola.");
+                        "GenieACS no confirmó TR069_INTERNET/OTHER en 5 minutos."
+                                + (fallosGenie.isEmpty() ? "" : " GenieACS dice: " + String.join(" | ", fallosGenie)));
             }
         }
         String[] error = limpiar(r, t, ctx, consola, candado, diferirGuardado);
         if (error != null) {
             return r.fin(true, Final.FALLIDA, error[0], error[1], "El servicio WAN quedó listo, pero " + error[2]);
         }
+        // Ya no hace falta la etiqueta: el preset no vuelve a tocar a la ONU.
+        boolean sinEtiqueta = genie.etiquetar(antes.idDispositivo(), ETIQUETA, false);
+        r.paso("P08", "GenieACS: quitar etiqueta " + ETIQUETA, sinEtiqueta ? "OK" : "no se pudo", true,
+                sinEtiqueta ? "Etiqueta quitada." : "No se pudo quitar la etiqueta en GenieACS (no afecta: el preset ya no la cambia).");
         return r.fin(true, Final.COMPLETADA, "P08", null, "Listo: " + posicion + (yaListo ? " ya tenía TR069_INTERNET/OTHER" : " pasó a TR069_INTERNET/OTHER")
                 + ", sin VLAN 46 y con " + t.perfilDestino() + ". Se reporta a GenieACS por la IP de servicio.");
+    }
+
+    /**
+     * Pasos 1 y 2: le pone la etiqueta {@value #ETIQUETA} en GenieACS antes de empezar, para que el preset le haga el
+     * cambio de servicio WAN la primera vez que se reporte (FD1281B3, 16 de octubre: con la IP de gestión repetida quedó
+     * con un solo reporte, 15 s después del paso 2). Si GenieACS no la tiene o ya está lista, no hace nada. Nunca
+     * detiene el paso.
+     */
+    public void prepararEnGenie(TrabajoOnu t, Contexto ctx) {
+        try {
+            Optional<EstadoServicioWan> e = genie.leer(t.sn());
+            if (e.isEmpty() || e.get().listo()) {
+                return;
+            }
+            boolean ok = genie.etiquetar(e.get().idDispositivo(), ETIQUETA, true);
+            auditoria.record(AuditEntry.builder(ctx.actor(), ok ? AuditAction.COMANDO_RESPONDIDO : AuditAction.PASO_FALLIDO)
+                    .usuarioId(ctx.usuarioId()).loteId(ctx.loteId()).ejecucionId(ctx.ejecucionId()).sn(t.sn()).sistema("GenieACS")
+                    .peticion(Map.of("comando", "GenieACS: etiqueta " + ETIQUETA)).resultado(ok ? "OK" : "FALLO")
+                    .mensaje(ok ? "Etiqueta " + ETIQUETA + " puesta: GenieACS le hará el cambio de servicio WAN en cuanto se reporte."
+                            : "GenieACS no aceptó la etiqueta " + ETIQUETA + "; el paso 3 la vuelve a intentar.")
+                    .build());
+        } catch (RuntimeException ignorada) {
+            // GenieACS caído no detiene los pasos 1 y 2: el paso 3 vuelve a intentarlo.
+        }
+    }
+
+    /** Pide a GenieACS que la despierte (connection request): en esa sesión el preset aplica el cambio. */
+    private boolean despertar(String id, List<String> rutas) {
+        try {
+            return genie.refrescar(id, rutas);
+        } catch (RuntimeException e) {
+            return false;
+        }
+    }
+
+    /** Despierta a la ONU en otro hilo, uno a la vez: la verificación sigue mientras GenieACS lo intenta. */
+    private void despertarSinEsperar(String id, List<String> rutas, java.util.concurrent.atomic.AtomicBoolean enCurso) {
+        if (enCurso.compareAndSet(false, true)) {
+            Thread.ofVirtual().name("despertar-" + id).start(() -> {
+                try {
+                    despertar(id, rutas);
+                } finally {
+                    enCurso.set(false);
+                }
+            });
+        }
+    }
+
+    static String comandoWan(TrabajoOnu t) {
+        return "display ont wan-info " + t.tarjeta().replace(" ", "") + " " + t.pon() + " " + t.onuId();
+    }
+
+    /** Lee en la OLT las conexiones WAN de la ONU (solo lectura, con la consola de esa OLT). Vacío si no se pudo. */
+    private Optional<String> leerWanEnOlt(TrabajoOnu t, Supplier<OltConsolePort> consola, Object candado) {
+        synchronized (candado) {
+            try {
+                OltConsolePort c = consola.get();
+                // La consola compartida puede haber quedado dentro de una tarjeta: el comando es de modo configuración.
+                if (c.prompt().contains("-if-")) {
+                    c.ejecutar("quit");
+                }
+                c.ejecutar("enable");
+                String respuesta = c.ejecutar(comandoWan(t));
+                return com.guajiranet.migradoronu.procedimientos.dominio.RespuestaHuawei.esError(respuesta) ? Optional.empty() : Optional.of(respuesta);
+            } catch (RuntimeException e) {
+                return Optional.empty();
+            }
+        }
+    }
+
+    private static final Pattern TIPO_DE_SERVICIO = Pattern.compile("(?im)^\\s*Service type\\s*:\\s*(.+?)\\s*$");
+
+    /** Los tipos de servicio de sus WAN según la OLT, por ejemplo "Tr069, Internet | Other". */
+    static String servicios(String wanInfo) {
+        List<String> r = new ArrayList<>();
+        Matcher m = TIPO_DE_SERVICIO.matcher(wanInfo);
+        while (m.find()) {
+            r.add(m.group(1));
+        }
+        return r.isEmpty() ? "sin conexiones WAN" : String.join(" | ", r);
+    }
+
+    /**
+     * ¿La OLT muestra el cambio hecho? Una WAN con Tr069 e Internet juntos, otra con Other, y ninguna que siga siendo
+     * solo de TR-069.
+     */
+    static boolean listoEnOlt(String wanInfo) {
+        boolean tr069Internet = false;
+        boolean otra = false;
+        boolean soloTr069 = false;
+        Matcher m = TIPO_DE_SERVICIO.matcher(wanInfo);
+        while (m.find()) {
+            String s = m.group(1).toLowerCase(java.util.Locale.ROOT);
+            boolean tr = s.contains("tr069");
+            boolean internet = s.contains("internet");
+            tr069Internet |= tr && internet;
+            soloTr069 |= tr && !internet;
+            otra |= s.equals("other");
+        }
+        return tr069Internet && otra && !soloTr069;
     }
 
     /**
@@ -255,47 +358,6 @@ public class CambioDeServicioWanUnaOnu {
                     "quedó sin VLAN 46 y no se pudo volver a poner " + t.perfilDestino() + ": " + p.mensaje()};
         }
         return null;
-    }
-
-    /**
-     * Reinicia la ONU para que se reporte ya. Primero en la OLT ({@code ont reset}, por OMCI: no depende de SmartOLT ni del
-     * TR-069). El reboot de SmartOLT respondía "Device reboot command sent" sin reiniciar algunas ONUs (14 de octubre):
-     * queda solo como respaldo si la OLT no acepta el comando. Si nada funciona, se sigue esperando igual.
-     */
-    private void reiniciar(Registro r, TrabajoOnu t, String paso, String porque, Supplier<OltConsolePort> consola, Object candado) {
-        String comando = "ont reset " + t.pon() + " " + t.onuId();
-        String respuesta;
-        boolean bien;
-        synchronized (candado) {
-            try {
-                OltConsolePort c = consola.get();
-                c.ejecutar("enable");
-                c.ejecutar("config");
-                c.ejecutar("interface gpon " + t.tarjeta().strip());
-                respuesta = c.ejecutar(comando);
-                c.ejecutar("quit");
-                bien = !com.guajiranet.migradoronu.procedimientos.dominio.RespuestaHuawei.esError(respuesta);
-            } catch (RuntimeException e) {
-                respuesta = String.valueOf(e.getMessage());
-                bien = false;
-            }
-        }
-        r.paso(paso, "OLT: " + comando + " (tarjeta " + t.tarjeta() + ")", respuesta, bien, bien
-                ? "La ONU " + porque + " en " + REINICIAR_SI_NO_CONFIRMA.toSeconds() + " s: se reinició desde la OLT para que se reporte ya."
-                : "La OLT no reinició la ONU; se intenta por SmartOLT.");
-        if (bien) {
-            return;
-        }
-        try {
-            Optional<EstadoGestionOnu> g = smartOlt.leer(t.sn());
-            if (g.isEmpty()) {
-                return;
-            }
-            smartOlt.reiniciar(g.get().idExterno());
-            r.paso(paso, "SmartOLT: reiniciar ONU (" + g.get().idExterno() + ")", "OK", true, "Reinicio pedido a SmartOLT.");
-        } catch (RuntimeException e) {
-            r.paso(paso, "SmartOLT: reiniciar ONU", String.valueOf(e.getMessage()), false, "No se pudo reiniciar; se sigue esperando.");
-        }
     }
 
     /** Los pasos de una ejecución y su auditoría (igual que en los otros cambios). */

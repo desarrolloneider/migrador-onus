@@ -62,11 +62,6 @@ public class GestionPorSmartOlt implements GestionSmartOltPort {
     }
 
     @Override
-    public void reiniciar(String idExterno) {
-        cliente().reiniciar(idExterno);
-    }
-
-    @Override
     public void desactivarGestion(String idExterno) {
         cliente().desactivarGestion(idExterno);
     }

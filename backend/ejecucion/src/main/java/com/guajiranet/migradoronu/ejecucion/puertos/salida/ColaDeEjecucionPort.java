@@ -32,6 +32,12 @@ public interface ColaDeEjecucionPort {
      */
     int recuperarInterrumpidas();
 
+    /**
+     * Las fallidas del lote (todas, o solo esas ejecuciones) vuelven a PENDIENTE en el mismo lote, y el lote vuelve a
+     * ejecución. No toca las que ya están activas en otro lote. Devuelve los SN que quedaron pendientes.
+     */
+    java.util.List<String> reintentarFallidas(long loteId, java.util.List<Long> ejecuciones);
+
     /** El paso en que va una ejecución en curso, para la pantalla en vivo. */
     void avanzarPaso(long ejecucionId, String paso);
 

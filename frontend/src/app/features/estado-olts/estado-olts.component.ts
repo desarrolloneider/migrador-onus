@@ -28,7 +28,8 @@ interface EstadoGeneral {
 type Orden = 'TOTAL' | 'FUERA' | 'PENDIENTES' | 'NOMBRE';
 
 /** Cada cuánto se vuelve a leer el estado. SmartOLT, Wispro y los perfiles salen de sus cachés del servidor. */
-const REFRESCO_MS = 60_000;
+/** 5 min: cada refresco puede pedir el inventario completo a SmartOLT, que bloquea por exceso de peticiones. */
+const REFRESCO_MS = 300_000;
 
 /** "Estado de OLT": cuántas ONUs tiene cada OLT, en línea, fuera, sin contrato y por perfil. Solo lectura. */
 @Component({

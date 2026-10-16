@@ -28,7 +28,8 @@ final class ReglasDePermiso {
             return Optional.of(new Exigencia(null, true, "gestionar usuarios"));
         }
         if (ruta.startsWith("/api/v1/batches")) {
-            if (!lectura && (ruta.endsWith("/confirm") || ruta.endsWith("/stop") || ruta.endsWith("/repeat-real"))) {
+            if (!lectura && (ruta.endsWith("/confirm") || ruta.endsWith("/stop") || ruta.endsWith("/repeat-real")
+                    || ruta.endsWith("/retry-failed"))) {
                 return modulo(Modulo.EJECUTAR, "ejecutar o detener lotes");
             }
             return modulo(Modulo.LOTES, "ver o armar lotes");

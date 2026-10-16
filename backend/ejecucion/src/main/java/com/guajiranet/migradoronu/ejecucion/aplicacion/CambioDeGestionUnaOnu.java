@@ -144,7 +144,17 @@ public class CambioDeGestionUnaOnu {
             r.paso("P07", comando, "", true, "El TR-069 ya estaba activo.");
         } else {
             try {
-                smartOlt.activarTr069(a.idExterno(), PERFIL_TR069_SMARTOLT);
+                try {
+                    smartOlt.activarTr069(a.idExterno(), PERFIL_TR069_SMARTOLT);
+                } catch (RuntimeException ocupada) {
+                    // "OLT wasn't able to process the command": la OLT estaba ocupada. Se espera y se intenta una vez más.
+                    if (!String.valueOf(ocupada.getMessage()).contains("olt_unable_to_process_command")) {
+                        throw ocupada;
+                    }
+                    r.paso("P07", comando, String.valueOf(ocupada.getMessage()), true, "La OLT estaba ocupada: se reintenta en 15 s.");
+                    esperar.accept(Duration.ofSeconds(15));
+                    smartOlt.activarTr069(a.idExterno(), PERFIL_TR069_SMARTOLT);
+                }
                 r.paso("P07", comando, "OK", true, "SmartOLT activó el TR-069 por la IP de gestión.");
             } catch (RuntimeException e) {
                 boolean sinTr069EnOlt = String.valueOf(e.getMessage()).toLowerCase(java.util.Locale.ROOT).contains("not enabled for this olt");

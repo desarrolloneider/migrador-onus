@@ -33,6 +33,8 @@ public enum AuditAction {
     LOTE_DETENIDO(Group.LOTES),
     LOTE_DETENIDO_AUTOMATICO(Group.LOTES),
     LOTE_TERMINADO(Group.LOTES),
+    /** Las fallidas de un lote terminado vuelven a pendientes en el mismo lote. */
+    LOTE_REINTENTADO(Group.LOTES),
 
     ONU_TOMADA(Group.EJECUCION),
     ONU_EXCLUIDA_AL_EJECUTAR(Group.EJECUCION),

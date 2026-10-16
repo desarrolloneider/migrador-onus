@@ -154,7 +154,9 @@ export class ListaUsuariosComponent {
   protected readonly guardando = signal(false);
   protected readonly error = signal<string | null>(null);
   protected readonly creado = signal<ConClaveTemporal | null>(null);
-  protected readonly nuevosModulos = signal<Set<Modulo>>(new Set(['LOTES']));
+  /** Lo que necesita quien hace el proceso de las ONUs (pasos 1, 2 y 3): armar, ejecutar, historial y fallidas. */
+  private static readonly MODULOS_OPERADOR: Modulo[] = ['LOTES', 'EJECUTAR', 'HISTORIAL', 'FALLIDAS'];
+  protected readonly nuevosModulos = signal<Set<Modulo>>(new Set(ListaUsuariosComponent.MODULOS_OPERADOR));
   protected nuevoUsuario = '';
   protected nuevoNombre = '';
   protected nuevoAdmin = false;
@@ -193,7 +195,7 @@ export class ListaUsuariosComponent {
         this.nuevoUsuario = '';
         this.nuevoNombre = '';
         this.nuevoAdmin = false;
-        this.nuevosModulos.set(new Set(['LOTES']));
+        this.nuevosModulos.set(new Set(ListaUsuariosComponent.MODULOS_OPERADOR));
         this.cargar();
       },
       error: (e: unknown) => this.error.set(mensajeDeError(e)),

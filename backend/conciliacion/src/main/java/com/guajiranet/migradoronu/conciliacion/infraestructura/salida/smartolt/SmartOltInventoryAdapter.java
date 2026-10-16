@@ -38,7 +38,8 @@ public class SmartOltInventoryAdapter implements OnuInventoryPort {
     private static final Pattern IPV4 =
             Pattern.compile("(?<![\\d.])(?:(?:25[0-5]|2[0-4]\\d|1?\\d?\\d)\\.){3}(?:25[0-5]|2[0-4]\\d|1?\\d?\\d)(?![\\d.])");
     private static final Duration VIGENCIA_OLTS = Duration.ofMinutes(10);
-    private static final Duration VIGENCIA_INVENTARIO = Duration.ofMinutes(3);
+    /** Copia del inventario completo. 10 min: cada descarga es una petición pesada a SmartOLT (bloqueó la IP el 15 de octubre). */
+    private static final Duration VIGENCIA_INVENTARIO = Duration.ofMinutes(10);
 
     private final Supplier<SmartOltClient> cliente;
     private final Clock reloj;
@@ -46,6 +47,12 @@ public class SmartOltInventoryAdapter implements OnuInventoryPort {
     private Instant oltsLeidasEn = Instant.MIN;
     private List<OnuCandidate> inventario = List.of();
     private Instant inventarioLeidoEn = Instant.MIN;
+    /**
+     * SmartOLT permite 15 llamadas por hora a get_all_onus_details (y bloquea al pasarse). Se usan como mucho 10: con
+     * eso, si ya se gastaron, se sirve la copia que haya aunque tenga más de 10 minutos.
+     */
+    static final int MAXIMO_INVENTARIOS_POR_HORA = 10;
+    private final java.util.ArrayDeque<Instant> descargas = new java.util.ArrayDeque<>();
 
     public SmartOltInventoryAdapter(Supplier<SmartOltClient> cliente, Clock reloj) {
         this.cliente = Objects.requireNonNull(cliente, "cliente");
@@ -54,37 +61,33 @@ public class SmartOltInventoryAdapter implements OnuInventoryPort {
 
     @Override
     public synchronized List<OnuCandidate> listOnus(String marca, String oltCodigo, String tarjeta, Integer pon) {
-        Map<String, Object> filtros = new LinkedHashMap<>();
-        if (oltCodigo != null) {
-            filtros.put("olt_id", oltIdDe(oltCodigo));
-            if (tarjeta != null) {
-                filtros.put("board", numeroDeTarjeta(tarjeta));
-                filtros.put("port", pon);
-            }
-        }
-        List<OnuCandidate> onus = filtros.isEmpty() ? inventarioCompleto() : convertir(cliente.get().onus(filtros));
+        // Con OLT: solo esa OLT (una llamada de ~1 s, con copia de 10 min por OLT). El inventario completo de toda la red
+        // tarda tanto que el servidor web cortaba la pantalla (504). Las dos cuentan en el mismo cupo de 15 por hora.
+        // Tarjeta, puerto y marca se filtran aquí.
         boolean todas = marca == null || marca.isBlank() || marca.equalsIgnoreCase("TODAS");
-        return onus.stream().filter(o -> todas || marca.equalsIgnoreCase(o.marca())).toList();
+        return (oltCodigo == null ? inventarioCompleto() : deLaOlt(oltCodigo)).stream()
+                .filter(o -> oltCodigo == null || oltCodigo.equalsIgnoreCase(o.position().oltCodigo()))
+                .filter(o -> tarjeta == null || tarjeta.equals(o.position().tarjeta()))
+                .filter(o -> pon == null || pon == o.position().pon())
+                .filter(o -> todas || marca.equalsIgnoreCase(o.marca()))
+                .toList();
     }
 
     @Override
-    public synchronized List<OnuCandidate> findBySn(String sn) {
+    public List<OnuCandidate> findBySn(String sn) {
         String buscado = FormatoSn.normalizar(sn).orElse(sn.strip().toUpperCase(Locale.ROOT));
         java.util.function.Predicate<OnuCandidate> mismoSn =
                 o -> buscado.equals(FormatoSn.normalizar(o.rawSn()).orElse(o.rawSn().toUpperCase(Locale.ROOT)));
-        // Con el inventario recién descargado no hace falta preguntar. Si no, se usa el filtro sn de SmartOLT (una sola
-        // consulta paginada) con el SN como lo escribe SmartOLT (HWTC47ADC1B3) y en hexadecimal.
-        if (Duration.between(inventarioLeidoEn, reloj.instant()).compareTo(VIGENCIA_INVENTARIO) <= 0) {
-            return inventario.stream().filter(mismoSn).toList();
-        }
+        // En vivo y por SN (get_onus_details_by_sn, presupuesto general): el estado de gestión cambia entre pasos y la
+        // copia del inventario puede tener minutos. Se pregunta con el SN como lo escribe SmartOLT (HWTC47ADC1B3) y en
+        // hexadecimal. Nunca se baja el inventario completo para buscar una ONU.
         for (String forma : formasDeConsulta(buscado)) {
-            List<OnuCandidate> encontradas = convertir(cliente.get().onus(Map.of("sn", forma))).stream().filter(mismoSn).toList();
+            List<OnuCandidate> encontradas = convertir(cliente.get().onusPorSn(forma)).stream().filter(mismoSn).toList();
             if (!encontradas.isEmpty()) {
                 return encontradas;
             }
         }
-        // No apareció con el filtro: se confirma contra el inventario completo antes de decir que no existe.
-        return inventarioCompleto().stream().filter(mismoSn).toList();
+        return List.of();
     }
 
     /** {@code 4857544347ADC1B3} se consulta como {@code HWTC47ADC1B3} y como {@code 4857544347ADC1B3}. */
@@ -98,12 +101,61 @@ public class SmartOltInventoryAdapter implements OnuInventoryPort {
         return List.of(snComun);
     }
 
+    /** Copia por OLT (get_all_onus_details?olt_id=…), 10 minutos. */
+    private final Map<String, List<OnuCandidate>> porOlt = new java.util.HashMap<>();
+    private final Map<String, Instant> porOltLeidaEn = new java.util.HashMap<>();
+
+    private List<OnuCandidate> deLaOlt(String oltCodigo) {
+        Instant ahora = reloj.instant();
+        String clave = oltCodigo.toUpperCase(Locale.ROOT);
+        // Si el inventario completo está fresco, sale de ahí sin gastar otra llamada.
+        if (Duration.between(inventarioLeidoEn, ahora).compareTo(VIGENCIA_INVENTARIO) <= 0) {
+            return inventario.stream().filter(o -> oltCodigo.equalsIgnoreCase(o.position().oltCodigo())).toList();
+        }
+        Instant leida = porOltLeidaEn.get(clave);
+        if (leida != null && Duration.between(leida, ahora).compareTo(VIGENCIA_INVENTARIO) <= 0) {
+            return porOlt.get(clave);
+        }
+        if (!hayCupo(ahora)) {
+            if (porOlt.containsKey(clave)) {
+                return porOlt.get(clave);
+            }
+            if (!inventario.isEmpty()) {
+                return inventario.stream().filter(o -> oltCodigo.equalsIgnoreCase(o.position().oltCodigo())).toList();
+            }
+            throw new com.guajiranet.migradoronu.integraciones.http.ErrorDeIntegracion(SmartOltClient.SISTEMA,
+                    "Se llegó al máximo de consultas del inventario de SmartOLT de esta hora (SmartOLT permite 15). Intenta en unos minutos.", null);
+        }
+        descargas.addLast(ahora);
+        List<OnuCandidate> onus = convertir(cliente.get().onus(Map.of("olt_id", oltIdDe(oltCodigo))));
+        porOlt.put(clave, onus);
+        porOltLeidaEn.put(clave, ahora);
+        return onus;
+    }
+
+    /** ¿Queda cupo de get_all_onus_details en la última hora? */
+    private boolean hayCupo(Instant ahora) {
+        while (!descargas.isEmpty() && Duration.between(descargas.peekFirst(), ahora).compareTo(Duration.ofHours(1)) > 0) {
+            descargas.pollFirst();
+        }
+        return descargas.size() < MAXIMO_INVENTARIOS_POR_HORA;
+    }
+
     private List<OnuCandidate> inventarioCompleto() {
         Instant ahora = reloj.instant();
-        if (Duration.between(inventarioLeidoEn, ahora).compareTo(VIGENCIA_INVENTARIO) > 0) {
-            inventario = convertir(cliente.get().onus(Map.of()));
-            inventarioLeidoEn = ahora;
+        if (Duration.between(inventarioLeidoEn, ahora).compareTo(VIGENCIA_INVENTARIO) <= 0) {
+            return inventario;
         }
+        if (!hayCupo(ahora)) {
+            if (!inventario.isEmpty()) {
+                return inventario;
+            }
+            throw new com.guajiranet.migradoronu.integraciones.http.ErrorDeIntegracion(SmartOltClient.SISTEMA,
+                    "Se llegó al máximo de consultas del inventario de SmartOLT de esta hora (SmartOLT permite 15). Intenta en unos minutos.", null);
+        }
+        descargas.addLast(ahora);
+        inventario = convertir(cliente.get().onus(Map.of()));
+        inventarioLeidoEn = ahora;
         return inventario;
     }
 
@@ -128,7 +180,7 @@ public class SmartOltInventoryAdapter implements OnuInventoryPort {
         String ip = Optional.ofNullable(texto(r, "ip_address")).orElseGet(() -> ipEnElNombre(texto(r, "name")));
         String perfil = texto(r, "tr069_profile");
         String modelo = texto(r, "onu_type_name");
-        return Optional.of(new OnuCandidate(sn, marcaDe(sn, texto(r, "vendor", "brand"), modelo), modelo,
+        return Optional.of(new OnuCandidate(sn, com.guajiranet.migradoronu.conciliacion.dominio.MarcaDeOnu.de(sn, modelo), modelo,
                 new OnuPosition(olt, "0/" + board, port, onu), enLinea, ip, perfil, gestion(r)));
     }
 
@@ -154,41 +206,6 @@ public class SmartOltInventoryAdapter implements OnuInventoryPort {
         }
         List<String> ips = IPV4.matcher(nombre).results().map(m -> m.group()).toList();
         return ips.size() == 1 ? ips.getFirst() : null;
-    }
-
-    /** Código de fabricante de los 4 primeros caracteres del SN → nombre de la marca. Los que no están, se muestran tal cual. */
-    static final Map<String, String> FABRICANTES = Map.of(
-            "HWTC", "Huawei", "ZTEG", "ZTE", "FHTT", "FiberHome", "TPLG", "TP-Link", "OPTI", "Optictimes",
-            "RUIJ", "Ruijie", "HNET", "Hikvision", "GPON", "Genérica GPON");
-
-    /** La marca sale del fabricante que traen los 4 primeros caracteres del SN (HWTC = Huawei) si SmartOLT no la da. */
-    /**
-     * Como {@link #marcaDe(String, String)}, pero los modelos MONU… (MONUV411 y parecidos) no son Huawei aunque su SN
-     * empiece por HWTC: por dentro usan otros parámetros (X_CT-COM, sin X_HW_SERVICELIST) y el procedimiento no les sirve.
-     */
-    static String marcaDe(String sn, String vendor, String modelo) {
-        String marca = marcaDe(sn, vendor);
-        if ("Huawei".equals(marca) && modelo != null && modelo.toUpperCase(Locale.ROOT).startsWith("MONU")) {
-            return "Genérica (" + modelo + ")";
-        }
-        return marca;
-    }
-
-    static String marcaDe(String sn, String vendor) {
-        if (vendor != null) {
-            return vendor.toUpperCase(Locale.ROOT).startsWith("HUAWEI") || vendor.equalsIgnoreCase("HWTC") ? "Huawei" : vendor;
-        }
-        String prefijo = sn.strip().toUpperCase(Locale.ROOT);
-        if (prefijo.matches("[0-9A-F]{16}")) {
-            String ascii = new String(java.util.HexFormat.of().parseHex(prefijo.substring(0, 8)), java.nio.charset.StandardCharsets.US_ASCII);
-            if (ascii.matches("[A-Z0-9]{4}")) {
-                prefijo = ascii;
-            }
-        }
-        if (prefijo.length() < 4) {
-            return "Desconocida";
-        }
-        return FABRICANTES.getOrDefault(prefijo.substring(0, 4), prefijo.substring(0, 4));
     }
 
     private synchronized Map<String, String> olts() {

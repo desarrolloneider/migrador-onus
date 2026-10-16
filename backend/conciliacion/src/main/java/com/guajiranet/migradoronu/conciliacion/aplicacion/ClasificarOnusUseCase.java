@@ -64,7 +64,7 @@ public class ClasificarOnusUseCase implements ClassifyOnusPort {
     /** El tipo de la clasificación en curso (lote de perfil o de VLAN). */
     private final ThreadLocal<Boolean> loteDeVlan = ThreadLocal.withInitial(() -> false);
     /** Hasta cuántas ONUs escogidas se piden una por una a SmartOLT. */
-    static final int POCAS_POR_SN = 40;
+    static final int POCAS_POR_SN = 100;
     /** Lote con ONUs escogidas: no se lee el perfil de la OLT entera. */
     private final ThreadLocal<Boolean> sinLeerOlt = ThreadLocal.withInitial(() -> false);
 
@@ -123,16 +123,20 @@ public class ClasificarOnusUseCase implements ClassifyOnusPort {
         this.marcasConProcedimiento = marcasConProcedimiento.stream().map(m -> m.toUpperCase(Locale.ROOT)).collect(Collectors.toSet());
     }
 
+    private static final org.slf4j.Logger LOG = org.slf4j.LoggerFactory.getLogger(ClasificarOnusUseCase.class);
+
     @Override
     public List<Classification> classify(ClassifyOnusCommand command) {
+        long inicio = System.nanoTime();
         // Con ONUs escogidas una por una se traen todas las marcas, para que las de otra marca no desaparezcan sin aviso:
         // quedan fuera con su motivo. Sin selección, la marca filtra como siempre.
-        // Con pocas ONUs escogidas (por ejemplo "Continuar con el paso siguiente") se piden solo esas a SmartOLT, en vez de
-        // bajar la OLT entera (miles de ONUs).
+        // ONUs escogidas: en vivo y por SN (get_onus_details_by_sn, presupuesto general de SmartOLT). El inventario completo
+        // (get_all_onus_details) tiene un cupo de 15 por hora y puede tener minutos: solo para listas grandes o sin selección.
         List<OnuCandidate> onus = command.sns() != null && command.sns().size() <= POCAS_POR_SN
-                ? command.sns().stream().flatMap(sn -> porSn(sn).stream())
+                ? command.sns().parallelStream().flatMap(sn -> porSn(sn).stream())
                         .filter(o -> command.oltCodigo() == null || command.oltCodigo().equalsIgnoreCase(o.position().oltCodigo())).toList()
                 : smartOlt.listOnus(command.sns() != null ? null : command.marca(), command.oltCodigo(), command.tarjeta(), command.pon());
+        long smartOltMs = (System.nanoTime() - inicio) / 1_000_000;
         marcaDelLote.set(command.sns() != null && command.marca() != null && !command.marca().isBlank()
                 && !command.marca().equalsIgnoreCase("TODAS") ? command.marca() : null);
         if (command.sns() != null) {
@@ -146,9 +150,18 @@ public class ClasificarOnusUseCase implements ClassifyOnusPort {
         sinLeerOlt.set(command.sns() != null);
         loteDeVlan.set(command.esVlanGestion());
         loteDeServicio.set(command.esServicioWan());
+        long t0 = System.nanoTime();
         servicioTerminado.set(command.esVlanGestion() ? terminadas() : Map.of());
+        long t1 = System.nanoTime();
         try {
-            return clasificar(onus, porIp(wispro.listAll()));
+            Map<String, List<Subscriber>> contratos = porIp(wispro.listAll());
+            long t2 = System.nanoTime();
+            List<Classification> r = clasificar(onus, contratos);
+            // Cuánto tarda cada parte de la vista previa (para saber qué la hace lenta).
+            LOG.info("Vista previa {} {}: {} ONUs; SmartOLT {} ms, ya listas (BD+GenieACS) {} ms, Wispro {} ms, clasificar (OLT y lotes) {} ms",
+                    command.tipo(), command.oltCodigo(), onus.size(), smartOltMs, (t1 - t0) / 1_000_000, (t2 - t1) / 1_000_000,
+                    (System.nanoTime() - t2) / 1_000_000);
+            return r;
         } finally {
             origenes.remove();
             marcaDelLote.remove();

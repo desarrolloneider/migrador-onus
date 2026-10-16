@@ -36,11 +36,6 @@ class CambioDeGestionUnaOnuTest {
         }
 
         @Override
-        public void reiniciar(String idExterno) {
-            throw new UnsupportedOperationException();
-        }
-
-        @Override
         public void activarTr069(String idExterno, String perfil) {
             cambios.add(idExterno + " tr069 " + perfil);
         }

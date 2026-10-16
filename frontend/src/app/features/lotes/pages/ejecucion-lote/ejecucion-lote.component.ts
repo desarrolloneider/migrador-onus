@@ -499,96 +499,68 @@ export class EjecucionLoteComponent implements OnInit {
     });
   }
 
-  /**
-   * Reintenta una ONU fallida: la marca como revisada (si no lo estaba), la vuelve a revisar desde cero en SmartOLT, la
-   * OLT y Wispro, y si entra la ejecuta en un lote individual del mismo tipo (real o simulación). Si ya no hace falta
-   * (por ejemplo, el cambio sí había quedado aplicado), lo dice y no ejecuta nada.
-   */
+  /** Reintenta una ONU fallida en este MISMO lote: vuelve a pendiente y el ejecutor la toma otra vez. */
   protected reintentar(e: EjecucionOnu): void {
     const simulacion = this.lote()?.simulacion ?? true;
     const datos: DatosConfirmacion = {
       titulo: 'Reintentar esta ONU', icono: 'replay', textoConfirmar: simulacion ? 'Sí, simular de nuevo' : 'Sí, reintentar',
-      mensaje: `Vas a reintentar ${e.sn} (${e.olt} ${e.tarjeta}/${e.pon} ONT ${e.onuId})${simulacion ? ' como simulación' : ', con cambio real en la OLT'}.`,
-      detalle: 'Se marca la falla como revisada, se vuelve a leer la ONU en SmartOLT, la OLT y Wispro, y si todavía hace falta se ejecuta en un lote individual. Si ya tiene GUAJIRANET1, no se toca.',
+      mensaje: `Vas a reintentar ${e.sn} (${e.olt} ${e.tarjeta}/${e.pon} ONT ${e.onuId}) en este mismo lote${simulacion ? ', como simulación' : ', con cambio real'}.`,
+      detalle: 'Vuelve a quedar pendiente en este lote. Antes de tocarla, el ejecutor la vuelve a leer: si ya no hace falta, no la cambia. El intento anterior queda en la auditoría.',
     };
     this.dialogo.open(ConfirmarDialogoComponent, { width: '520px', data: datos }).afterClosed().pipe(
       filter(Boolean),
       switchMap(() => {
         this.reintentando.set(e.id);
-        const nota = `Reintento pedido desde el lote ${e.loteNumero}: ${e.codigo ?? 'fallo'}.`;
-        return e.revisada ? of(null) : this.ejecucionesService.marcarRevisada(e.id, { nota });
-      }),
-      // En un lote de VLAN el reintento vuelve a poner la VLAN de gestión, no el perfil.
-      switchMap(() => this.lote()?.filtros.tipo && this.lote()?.filtros.tipo !== 'PERFIL_TR069'
-        ? this.lotesService.armarVistaPrevia({ marca: 'Huawei', olt: null, tarjeta: null, pon: null, sns: [e.sn], tipo: this.lote()!.filtros.tipo })
-        : this.lotesService.armarPruebaIndividual({ sn: e.sn })),
-      switchMap((vista) => {
-        const item = vista.items[0];
-        if (!item || item.grupo !== 'ENTRA') {
-          const motivo = item?.grupo === 'YA_TIENE_PERFIL'
-            ? (this.lote()?.filtros.tipo === 'VLAN_GESTION' ? 'ya tiene la gestión en la VLAN 46: no hace falta reintentar.' : 'ya tiene GUAJIRANET1: no hace falta reintentar.')
-            : item?.mensaje ?? 'no se encontró en SmartOLT.';
-          this.avisos.open(`${e.sn}: ${motivo}`, 'Cerrar', { duration: 10_000 });
-          return this.lotesService.descartar(vista.lote.id).pipe(map(() => null));
-        }
-        return this.lotesService.confirmar(vista.lote.id, { simulacion }).pipe(map((lote) => lote.id));
+        return this.lotesService.reintentarFallidas(e.loteId, [e.id]);
       }),
       finalize(() => this.reintentando.set(null)),
     ).subscribe({
-      next: (nuevoLote) => {
-        if (nuevoLote !== null) {
-          void this.router.navigate(['/lotes', nuevoLote]);
-        }
+      next: () => {
+        this.avisos.open(`${e.sn} vuelve a quedar pendiente en ${e.loteNumero}.`, 'Cerrar', { duration: 5_000 });
+        this.recargar();
       },
       error: (error: unknown) => this.avisos.open(`No se pudo reintentar ${e.sn}: ${mensajeDeError(error)}`, 'Cerrar', { duration: 10_000 }),
     });
   }
 
-  /**
-   * Reintenta todas las fallidas del lote a la vez: las marca como revisadas, arma una vista previa con esas ONUs (se
-   * vuelven a leer SmartOLT, la OLT y Wispro) y ejecuta las que entren, del mismo tipo que este lote.
-   */
+  /** Reintenta todas las fallidas en este MISMO lote: vuelven a pendientes y el lote vuelve a ejecutarse. */
   protected reintentarFallidas(): void {
     const lote = this.lote();
     const fallidas = this.fallidas();
     if (!lote || !fallidas.length) return;
-    const olts = [...new Set(fallidas.map((f) => f.olt))];
     const datos: DatosConfirmacion = {
       titulo: `Reintentar ${fallidas.length} fallidas`, icono: 'replay',
       textoConfirmar: lote.simulacion ? 'Sí, simular de nuevo' : 'Sí, reintentar',
-      mensaje: `Vas a reintentar ${fallidas.length} ONU(s) de ${lote.numero}${lote.simulacion ? ' como simulación' : ', con cambio real en la OLT'}.`,
-      detalle: 'Se marcan las fallas como revisadas, se vuelven a leer las ONUs y se ejecutan solo las que todavía lo necesiten. Las que ya tengan GUAJIRANET1 no se tocan.',
+      mensaje: `Vas a reintentar ${fallidas.length} ONU(s) en este mismo lote ${lote.numero}${lote.simulacion ? ', como simulación' : ', con cambio real'}.`,
+      detalle: 'Vuelven a quedar pendientes en este lote. Antes de tocar cada una, el ejecutor la vuelve a leer: si ya no hace falta, no la cambia. Los intentos anteriores quedan en la auditoría.',
     };
     this.dialogo.open(ConfirmarDialogoComponent, { width: '520px', data: datos }).afterClosed().pipe(
       filter(Boolean),
       switchMap(() => {
         this.reintentandoTodas.set(true);
-        const nota = `Reintento de todas las fallidas del lote ${lote.numero}.`;
-        const revisar = fallidas.filter((f) => !f.revisada).map((f) => this.ejecucionesService.marcarRevisada(f.id, { nota }));
-        return revisar.length ? forkJoin(revisar) : of([]);
-      }),
-      switchMap(() => this.lotesService.armarVistaPrevia({
-        marca: 'Huawei', olt: olts.length === 1 ? olts[0] : null, tarjeta: null, pon: null,
-        perfiles: this.lote()?.filtros.tipo === 'VLAN_GESTION' ? null : ['GUAJIRANET', 'SIN_PERFIL'], sns: fallidas.map((f) => f.sn),
-        tipo: this.lote()?.filtros.tipo ?? 'PERFIL_TR069',
-      })),
-      switchMap((vista) => {
-        const entran = vista.items.filter((i) => i.grupo === 'ENTRA').length;
-        if (!entran) {
-          this.avisos.open('Ninguna necesita reintento: ya tienen GUAJIRANET1 o no cumplen las condiciones. Revisa la vista previa.', 'Cerrar', { duration: 10_000 });
-          void this.router.navigate(['/lotes', vista.lote.id, 'vista-previa']);
-          return of(null);
-        }
-        return this.lotesService.confirmar(vista.lote.id, { simulacion: lote.simulacion }).pipe(map((nuevo) => nuevo.id));
+        return this.lotesService.reintentarFallidas(lote.id);
       }),
       finalize(() => this.reintentandoTodas.set(false)),
     ).subscribe({
-      next: (nuevoLote) => {
-        if (nuevoLote !== null) {
-          void this.router.navigate(['/lotes', nuevoLote]);
-        }
+      next: (r) => {
+        const faltan = fallidas.length - r.reintentadas;
+        this.avisos.open(`${r.reintentadas} ONU(s) vuelven a quedar pendientes en ${lote.numero}.`
+          + (faltan > 0 ? ` ${faltan} no, porque ya están en otro lote en curso.` : ''), 'Cerrar', { duration: 8_000 });
+        this.recargar();
       },
       error: (error: unknown) => this.avisos.open(`No se pudieron reintentar: ${mensajeDeError(error)}`, 'Cerrar', { duration: 10_000 }),
+    });
+  }
+
+  /** Vuelve a pedir el lote y sus ONUs ya mismo (además de los avisos en vivo). */
+  private recargar(): void {
+    const id = Number(this.id());
+    forkJoin([this.lotesService.consultar(id), this.lotesService.listarEjecuciones(id)]).subscribe({
+      next: ([lote, ejecuciones]) => {
+        this.lote.set(lote);
+        this.ejecuciones.set(ejecuciones);
+      },
+      error: () => undefined,
     });
   }
 }

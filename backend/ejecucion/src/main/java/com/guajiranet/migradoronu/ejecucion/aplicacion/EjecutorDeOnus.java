@@ -34,11 +34,17 @@ public class EjecutorDeOnus {
     private final CambioDeGestionUnaOnu gestion;
     private final int vlanGestion;
     private CambioDeServicioWanUnaOnu servicio;
-    /** Cuántas ONUs de servicio WAN van a la vez en una OLT (casi todo es esperar a GenieACS). */
-    private volatile int servicioEnParalelo = 20;
+    /** Cuántas ONUs de servicio WAN (paso 3) van a la vez en una OLT. 1 = de a una (decisión del 15 de octubre). */
+    private volatile int servicioEnParalelo = 1;
+    /** Cuántas ONUs de VLAN de gestión (paso 1) van a la vez en una OLT. 1: con 9 a la vez SmartOLT cortó conexiones y la OLT no procesó (LOT-2026-000129). */
+    private volatile int gestionEnParalelo = 1;
 
     public void servicioEnParalelo(int n) {
         this.servicioEnParalelo = Math.max(1, n);
+    }
+
+    public void gestionEnParalelo(int n) {
+        this.gestionEnParalelo = Math.max(1, n);
     }
 
     /** El cambio de servicio WAN (GenieACS); sin él, los lotes de ese tipo fallan con un mensaje claro. */
@@ -69,11 +75,16 @@ public class EjecutorDeOnus {
         /** Las ONUs de servicio WAN que van en paralelo en esta OLT. */
         private final java.util.concurrent.Semaphore cupos;
         private final int maximo;
+        /** Las ONUs de VLAN de gestión que van en paralelo en esta OLT. */
+        private final java.util.concurrent.Semaphore cuposGestion;
+        private final int maximoGestion;
 
-        private SesionOlt(String olt, int maximo) {
+        private SesionOlt(String olt, int maximo, int maximoGestion) {
             this.olt = olt;
             this.maximo = maximo;
             this.cupos = new java.util.concurrent.Semaphore(maximo);
+            this.maximoGestion = maximoGestion;
+            this.cuposGestion = new java.util.concurrent.Semaphore(maximoGestion);
         }
 
         /** Espera a que terminen las ONUs que van en paralelo. */
@@ -81,6 +92,8 @@ public class EjecutorDeOnus {
             try {
                 cupos.acquire(maximo);
                 cupos.release(maximo);
+                cuposGestion.acquire(maximoGestion);
+                cuposGestion.release(maximoGestion);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
@@ -123,7 +136,7 @@ public class EjecutorDeOnus {
     }
 
     public SesionOlt nuevaSesion(String olt) {
-        return new SesionOlt(olt, servicioEnParalelo);
+        return new SesionOlt(olt, servicioEnParalelo, gestionEnParalelo);
     }
 
     /**
@@ -138,7 +151,7 @@ public class EjecutorDeOnus {
         }
         TrabajoOnu t = tomado.get();
         if (t.esVlanGestion()) {
-            ejecutarGestion(t);
+            ejecutarGestionEnParalelo(t, s);
             return true;
         }
         if (t.esServicioWan()) {
@@ -167,6 +180,7 @@ public class EjecutorDeOnus {
                     gestion == null ? null : () -> gestion.tieneGestionEn(t.sn(), vlanGestion));
             Contexto ctx = new Contexto(ActorType.PROCESO_EJECUTOR, t.confirmadoPor(), t.loteId(), t.ejecucionId(),
                     paso -> cola.avanzarPaso(t.ejecucionId(), paso));
+            prepararServicioWan(t, ctx);
             Resultado r = cambio.ejecutar(objetivo, !t.simulacion(), ctx, s::compartida);
             switch (r.fin()) {
                 case COMPLETADA -> {
@@ -196,11 +210,40 @@ public class EjecutorDeOnus {
         return true;
     }
 
+    /**
+     * Pasos 1 y 2 (reales): la etiqueta de GenieACS va antes del cambio, para que la ONU salga con el servicio WAN
+     * cambiado la primera vez que se reporte.
+     */
+    private void prepararServicioWan(TrabajoOnu t, Contexto ctx) {
+        if (servicio != null && !t.simulacion()) {
+            servicio.prepararEnGenie(t, ctx);
+        }
+    }
+
+    /** Paso 1 en paralelo: toma un cupo (espera si ya van todos) y la ONU sigue en su propio hilo. */
+    private void ejecutarGestionEnParalelo(TrabajoOnu t, SesionOlt s) {
+        try {
+            s.cuposGestion.acquire();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            cola.terminar(t.ejecucionId(), "FALLIDA", "P02", "FALLO_SISTEMA_NO_RESPONDE", "El ejecutor se detuvo antes de empezar la ONU.");
+            return;
+        }
+        Thread.ofVirtual().name("gestion-" + t.sn()).start(() -> {
+            try {
+                ejecutarGestion(t);
+            } finally {
+                s.cuposGestion.release();
+            }
+        });
+    }
+
     /** Lote de VLAN de gestión: el cambio va por SmartOLT; no usa la consola de la OLT ni el save. */
     private void ejecutarGestion(TrabajoOnu t) {
         try {
             Contexto ctx = new Contexto(ActorType.PROCESO_EJECUTOR, t.confirmadoPor(), t.loteId(), t.ejecucionId(),
                     paso -> cola.avanzarPaso(t.ejecucionId(), paso));
+            prepararServicioWan(t, ctx);
             Resultado r = gestion.ejecutar(t, vlanGestion, !t.simulacion(), ctx);
             switch (r.fin()) {
                 case COMPLETADA, SIMULADA -> cola.terminar(t.ejecucionId(), "COMPLETADA", r.paso(), null, r.mensaje());

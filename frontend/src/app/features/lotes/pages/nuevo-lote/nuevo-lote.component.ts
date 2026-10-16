@@ -19,6 +19,13 @@ import { Olt } from '../../../configuracion/models/configuracion.model';
 import { LotesService } from '../../data/lotes.service';
 import { OnusDeOlt, TipoLote } from '../../models/lote.model';
 
+/**
+ * Las marcas que reconoce el servidor (MarcaDeOnu: SN + modelo de SmartOLT). Las de "modelo sin definir" o "No
+ * confirmada" aparecen cuando se escoge una OLT que las tenga.
+ */
+const MARCAS_CONOCIDAS = ['Huawei', 'ZTE', 'TP-Link', 'FiberHome', 'Optictimes', 'C-Data', 'Ruijie', 'Hikvision',
+  'Genérica MONU', 'Genérica E4L', 'Genérica ZX', 'Genérica GPON'];
+
 /** Armar un lote: marca y, si se quiere, OLT, tarjeta y puerto PON (ESP-03). */
 @Component({
   selector: 'app-nuevo-lote',
@@ -65,9 +72,11 @@ import { OnusDeOlt, TipoLote } from '../../models/lote.model';
           <mat-form-field class="ancho-completo">
             <mat-label>Marca</mat-label>
             <mat-select formControlName="marca">
-              @for (m of marcas; track m.valor) { <mat-option [value]="m.valor">{{ m.nombre }}</mat-option> }
+              @for (m of marcas(); track m.valor) {
+                <mat-option [value]="m.valor">{{ m.nombre }}@if (m.cantidad !== null) { · {{ m.cantidad }} }@if (m.valor !== 'Huawei') { · sin procedimiento }</mat-option>
+              }
             </mat-select>
-            <mat-hint>El procedimiento es solo para ONUs Huawei (las MONU… con SN HWTC no cuentan).</mat-hint>
+            <mat-hint>Huawei = SN HWTC y modelo Huawei (EG8…, HG8…, HS8…). Las demás marcas se pueden ver, pero no escoger: no tienen procedimiento.</mat-hint>
           </mat-form-field>
 
           <mat-form-field class="ancho-completo">
@@ -416,7 +425,20 @@ export class NuevoLoteComponent {
   protected readonly maximo = 1000;
 
   /** Marcas de ONU vistas en SmartOLT. El cambio lo hace la OLT Huawei, así que todas pueden entrar. */
-  protected readonly marcas = [{ valor: 'Huawei', nombre: 'Huawei' }];
+  /**
+   * Las marcas que hay en la OLT escogida, con cuántas ONUs tiene cada una (la marca la decide el servidor con el SN y el
+   * modelo). Huawei va primero: es la única con procedimiento.
+   */
+  protected readonly marcas = computed(() => {
+    const cuenta = new Map<string, number>();
+    (this.onusOlt()?.onus ?? []).forEach((o) => cuenta.set(o.marca ?? 'Desconocida', (cuenta.get(o.marca ?? 'Desconocida') ?? 0) + 1));
+    // Siempre todas las marcas conocidas de SmartOLT, también antes de escoger la OLT; con OLT, además las que traiga.
+    const nombres = [...new Set([...MARCAS_CONOCIDAS, ...cuenta.keys()])];
+    const conOlt = !!this.onusOlt();
+    return nombres
+      .map((m) => ({ valor: m, nombre: m, cantidad: conOlt ? (cuenta.get(m) ?? 0) : null }))
+      .sort((a, b) => (a.valor === 'Huawei' ? -1 : b.valor === 'Huawei' ? 1 : (b.cantidad ?? 0) - (a.cantidad ?? 0) || a.nombre.localeCompare(b.nombre)));
+  });
   protected readonly formulario = inject(FormBuilder).group({
     marca: ['Huawei', Validators.required],
     olt: [null as string | null],
@@ -655,7 +677,9 @@ export class NuevoLoteComponent {
   }
 
   /** Las que ya tienen el perfil nuevo no se seleccionan: no hay nada que cambiarles. */
-  protected seleccionable(o: { perfil: string | null; modoGestion?: string | null; vlanGestion?: number | null; tr069?: boolean; tresPasosListos?: boolean }): boolean {
+  protected seleccionable(o: { marca?: string | null; perfil: string | null; modoGestion?: string | null; vlanGestion?: number | null; tr069?: boolean; tresPasosListos?: boolean }): boolean {
+    // Solo Huawei confirmada (SN HWTC y modelo Huawei) tiene procedimiento: las demás marcas se ven, pero no se escogen.
+    if (o.marca !== 'Huawei') return false;
     // Las que ya terminaron los 3 pasos no vuelven a los pasos 1 y 3. En el paso 2 sí, si les falta el perfil: toda ONU
     // tiene que quedar con GUAJIRANET1 para que GenieACS la administre (por ejemplo, el cambio de contraseña).
     if (o.tresPasosListos) {

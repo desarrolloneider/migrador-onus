@@ -19,8 +19,6 @@ public interface GestionSmartOltPort {
      */
     void activarTr069(String idExterno, String perfil);
 
-    /** Reinicia la ONU (el cliente queda sin servicio cerca de un minuto). Al prender se reporta enseguida a GenieACS. */
-    void reiniciar(String idExterno);
 
     /** IP de gestión en Inactiva (quita la VLAN de gestión). SmartOLT también le quita el perfil TR-069 en la OLT. */
     void desactivarGestion(String idExterno);

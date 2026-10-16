@@ -40,6 +40,12 @@ public class SmartOltClient {
      * Los filtros en null no se envían.
      */
     public List<JsonNode> onus(Map<String, ?> filtros) {
+        // Sin page/page_size SmartOLT devuelve todo en UNA respuesta (11 829 ONUs, 15 de octubre). Paginando de a 100 (su
+        // máximo) eran ~119 peticiones por inventario, y SmartOLT bloqueó la IP por exceso de peticiones.
+        JsonNode completa = http.get("/api/onu/get_all_onus_details", filtros);
+        if (completa != null && !completa.has("page")) {
+            return registros(completa);
+        }
         List<JsonNode> todas = new ArrayList<>();
         for (int pagina = 1; pagina <= MAXIMO_PAGINAS; pagina++) {
             List<JsonNode> registros = pagina(filtros, pagina, TAMANO_PAGINA);
@@ -51,9 +57,13 @@ public class SmartOltClient {
         throw new ErrorDeIntegracion(SISTEMA, "SmartOLT devolvió más de " + MAXIMO_PAGINAS + " páginas; se detuvo la descarga.", null);
     }
 
-    /** Las ONUs con ese SN (filtro sn de SmartOLT, en una sola consulta). */
+    /**
+     * Las ONUs con ese SN: GET /api/onu/get_onus_details_by_sn/{sn}. Cuenta en el presupuesto general (1000 por hora),
+     * no en el de get_all_onus_details (15 por hora), que SmartOLT bloquea al pasarse.
+     */
     public List<JsonNode> onusPorSn(String sn) {
-        return pagina(Map.of("sn", sn), 1, TAMANO_PAGINA);
+        return registros(http.get("/api/onu/get_onus_details_by_sn/" + java.net.URLEncoder.encode(sn, java.nio.charset.StandardCharsets.UTF_8),
+                Map.of()));
     }
 
     /**
@@ -78,16 +88,6 @@ public class SmartOltClient {
         if (estado == null || !estado.asBoolean()) {
             JsonNode error = r == null ? null : (r.has("error") ? r.get("error") : r.get("response"));
             throw new ErrorDeIntegracion(SISTEMA, "SmartOLT no activó el TR-069: " + (error == null ? "sin detalle" : error.asString()), null);
-        }
-    }
-
-    /** Reinicia la ONU: POST /api/onu/reboot/{id externo}. */
-    public void reiniciar(String idExterno) {
-        JsonNode r = http.postFormulario("/api/onu/reboot/" + java.net.URLEncoder.encode(idExterno, java.nio.charset.StandardCharsets.UTF_8), Map.of());
-        JsonNode estado = r == null ? null : r.get("status");
-        if (estado == null || !estado.asBoolean()) {
-            JsonNode error = r == null ? null : (r.has("error") ? r.get("error") : r.get("response"));
-            throw new ErrorDeIntegracion(SISTEMA, "SmartOLT no reinició la ONU: " + (error == null ? "sin detalle" : error.asString()), null);
         }
     }
 

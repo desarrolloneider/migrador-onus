@@ -55,6 +55,11 @@ export class LotesService {
     return this.http.post<Lote>(`${this.baseUrl}/${id}/discard`, {});
   }
 
+  /** Reintenta en el MISMO lote: las fallidas (todas o solo esas ejecuciones) vuelven a pendientes. */
+  reintentarFallidas(id: number, ejecuciones?: number[]): Observable<{ reintentadas: number; sns: string[] }> {
+    return this.http.post<{ reintentadas: number; sns: string[] }>(`${this.baseUrl}/${id}/retry-failed`, { ejecuciones: ejecuciones ?? [] });
+  }
+
   detener(id: number): Observable<Lote> {
     return this.http.post<Lote>(`${this.baseUrl}/${id}/stop`, {});
   }

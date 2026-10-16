@@ -45,6 +45,38 @@ public class JdbcColaDeEjecucionAdapter implements ColaDeEjecucionPort {
     }
 
     @Override
+    public java.util.List<String> reintentarFallidas(long loteId, java.util.List<Long> ejecuciones) {
+        return transaccion.execute(estado -> {
+            String estadoLote = jdbc.sql("SELECT estado FROM lotes WHERE id = ? FOR UPDATE").param(loteId).query(String.class).optional().orElse(null);
+            if (estadoLote == null || !java.util.List.of("TERMINADO_CON_FALLAS", "TERMINADO", "DETENIDO", "EN_EJECUCION").contains(estadoLote)) {
+                return java.util.List.<String>of();
+            }
+            boolean todas = ejecuciones == null || ejecuciones.isEmpty();
+            String soloEstas = todas ? "" : " AND e.id IN (" + String.join(",", ejecuciones.stream().map(id -> "?").toList()) + ")";
+            java.util.List<Object> parametros = new java.util.ArrayList<>();
+            parametros.add(loteId);
+            if (!todas) {
+                parametros.addAll(ejecuciones);
+            }
+            // Una ONU que ya está activa en otro lote no se reabre aquí (solo puede estar en uno a la vez).
+            java.util.List<String> sns = jdbc.sql("""
+                    UPDATE ejecuciones_onu e SET estado = 'PENDIENTE', paso_actual = NULL, codigo_fallo = NULL, mensaje_fallo = NULL,
+                           estado_al_fallar = NULL, iniciada_en = NULL, terminada_en = NULL, proceso_id = NULL,
+                           revisada = false, revisada_por = NULL, revisada_en = NULL, nota_revision = NULL
+                    WHERE e.lote_id = ? AND e.estado = 'FALLIDA'""" + soloEstas + """
+                      AND NOT EXISTS (SELECT 1 FROM ejecuciones_onu o WHERE o.sn = e.sn AND o.id <> e.id
+                                      AND o.estado IN ('PENDIENTE', 'REVALIDANDO', 'EN_CURSO'))
+                    RETURNING e.sn
+                    """).params(parametros).query(String.class).list();
+            if (!sns.isEmpty()) {
+                jdbc.sql("UPDATE lotes SET estado = 'EN_EJECUCION', terminado_en = NULL WHERE id = ?").param(loteId).update();
+                jdbc.sql(CONTADORES).param(loteId).update();
+            }
+            return sns;
+        });
+    }
+
+    @Override
     public void atenderDetenciones() {
         transaccion.executeWithoutResult(estado -> {
             var lotes = jdbc.sql("SELECT id FROM lotes WHERE estado = 'DETENIENDOSE' FOR UPDATE").query(Long.class).list();

@@ -123,7 +123,8 @@ public class GenieAcsPorApi implements GenieAcsPort, com.guajiranet.migradoronu.
             return listos;
         }
         java.util.Set<String> r = new java.util.HashSet<>();
-        for (int c = 1; c <= 2; c++) {
+        // Conexiones 1 a 4: hay EG8145V5 con el internet en la conexión 4 (OLT_ALBANIA, 15 de octubre).
+        for (int c = 1; c <= 4; c++) {
             String filtro = URLEncoder.encode(WAN + "." + c + ".WANIPConnection.1.X_HW_SERVICELIST = \"TR069_INTERNET\"", StandardCharsets.UTF_8);
             JsonNode lista = get("/api/devices/?filter=" + filtro + "&projection=DeviceID.SerialNumber");
             if (lista != null && lista.isArray()) {
@@ -153,9 +154,70 @@ public class GenieAcsPorApi implements GenieAcsPort, com.guajiranet.migradoronu.
         return tarea(idDispositivo, List.of(Map.of("name", "setParameterValues", "parameterValues", lista)));
     }
 
+    @Override
+    public boolean etiquetar(String idDispositivo, String etiqueta, boolean poner) {
+        try {
+            String ruta = "/api/devices/" + URLEncoder.encode(idDispositivo, StandardCharsets.UTF_8).replace("+", "%20") + "/tags";
+            enviar("POST", ruta, JSON.writeValueAsString(Map.of(etiqueta, poner)), Duration.ofSeconds(30));
+            return true;
+        } catch (RuntimeException e) {
+            return false;
+        }
+    }
+
+    @Override
+    public int limpiarFallos(String idDispositivo) {
+        try {
+            String filtro = URLEncoder.encode("device = \"" + idDispositivo + "\"", StandardCharsets.UTF_8).replace("+", "%20");
+            JsonNode lista = get("/api/faults/?filter=" + filtro + "&projection=_id");
+            int borrados = 0;
+            if (lista != null && lista.isArray()) {
+                for (JsonNode f : lista) {
+                    String id = f.path("_id").asString();
+                    if (id != null && !id.isBlank()) {
+                        enviar("DELETE", "/api/faults/" + URLEncoder.encode(id, StandardCharsets.UTF_8).replace("+", "%20"), null, Duration.ofSeconds(30));
+                        borrados++;
+                    }
+                }
+            }
+            return borrados;
+        } catch (RuntimeException e) {
+            return 0;
+        }
+    }
+
+    @Override
+    public List<String> fallos(String idDispositivo) {
+        try {
+            String filtro = URLEncoder.encode("device = \"" + idDispositivo + "\"", StandardCharsets.UTF_8).replace("+", "%20");
+            JsonNode lista = get("/api/faults/?filter=" + filtro);
+            List<String> r = new ArrayList<>();
+            if (lista != null && lista.isArray()) {
+                for (JsonNode f : lista) {
+                    String detalle = f.path("detail").isMissingNode() || f.path("detail").isNull() ? "" : " " + f.path("detail").toString();
+                    r.add(f.path("channel").asString() + ": " + f.path("code").asString() + " " + f.path("message").asString()
+                            + (detalle.length() > 300 ? detalle.substring(0, 300) + "…" : detalle));
+                }
+            }
+            return r;
+        } catch (RuntimeException e) {
+            return List.of();
+        }
+    }
+
     private boolean tarea(String idDispositivo, Object cuerpo) {
         String ruta = "/api/devices/" + URLEncoder.encode(idDispositivo, StandardCharsets.UTF_8).replace("+", "%20") + "/tasks?connection_request";
-        JsonNode r = enviar("POST", ruta, JSON.writeValueAsString(cuerpo), Duration.ofSeconds(60));
+        JsonNode r;
+        try {
+            r = enviar("POST", ruta, JSON.writeValueAsString(cuerpo), Duration.ofSeconds(60));
+        } catch (IllegalStateException e) {
+            // 503/504: GenieACS no alcanzó a la ONU en el momento (connection request). La tarea queda en cola y se
+            // entrega cuando la ONU se reporte: se sigue esperando como cualquier "no respondió".
+            if (String.valueOf(e.getMessage()).matches("GenieACS respondió 50[34] .*")) {
+                return false;
+            }
+            throw e;
+        }
         return r != null && r.isArray() && !r.isEmpty() && "done".equals(r.get(0).path("status").asString());
     }
 
@@ -170,7 +232,8 @@ public class GenieAcsPorApi implements GenieAcsPort, com.guajiranet.migradoronu.
         for (int intento = 0; intento < 2; intento++) {
             try {
                 HttpRequest.Builder b = HttpRequest.newBuilder(URI.create(url + ruta)).timeout(tiempo).header("Accept", "application/json");
-                b = cuerpo == null ? b.GET() : b.header("Content-Type", "application/json").method(metodo, HttpRequest.BodyPublishers.ofString(cuerpo));
+                b = cuerpo != null ? b.header("Content-Type", "application/json").method(metodo, HttpRequest.BodyPublishers.ofString(cuerpo))
+                        : "GET".equals(metodo) ? b.GET() : b.method(metodo, HttpRequest.BodyPublishers.noBody());
                 HttpResponse<String> r = http.send(b.build(), HttpResponse.BodyHandlers.ofString());
                 if ((r.statusCode() == 401 || r.statusCode() == 403) && intento == 0) {
                     iniciarSesion();

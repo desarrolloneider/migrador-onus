@@ -93,8 +93,9 @@ public class EjecutorProgramado {
     /** Un hilo por OLT: hace sus ONUs una tras otra con la misma sesión hasta que no queden. */
     private void trabajar(String olt) {
         Thread.currentThread().setName("ejecutor-" + olt);
-        // ONUs de servicio WAN a la vez en esta OLT (parámetro servicio_en_paralelo, 20 si no está).
-        ejecutor.servicioEnParalelo(entero("servicio_en_paralelo", 20, 1, 100));
+        // Pasos 1 y 3 de a una ONU por OLT (gestion_en_paralelo y servicio_en_paralelo, 1 si no están); varias OLT a la vez.
+        ejecutor.servicioEnParalelo(entero("servicio_en_paralelo", 1, 1, 100));
+        ejecutor.gestionEnParalelo(entero("gestion_en_paralelo", 1, 1, 50));
         EjecutorDeOnus.SesionOlt sesion = ejecutor.nuevaSesion(olt);
         try {
             while (!deteniendo && ejecutor.ejecutarSiguiente(procesoId, sesion, entero("onus_por_guardado", 1, 1, 50))) {

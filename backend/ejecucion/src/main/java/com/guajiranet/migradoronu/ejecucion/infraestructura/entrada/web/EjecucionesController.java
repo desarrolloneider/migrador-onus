@@ -61,12 +61,41 @@ public class EjecucionesController {
     public record RevisarRequest(String nota) {
     }
 
+    /** @param ejecuciones las ejecuciones fallidas a reintentar; vacío o null = todas las fallidas del lote */
+    public record ReintentarRequest(List<Long> ejecuciones) {
+    }
+
+    public record ReintentoDto(int reintentadas, List<String> sns) {
+    }
+
     private final ConsultarEjecucionesUseCase consultas;
     private final UserNamesPort nombres;
+    private final com.guajiranet.migradoronu.ejecucion.puertos.salida.ColaDeEjecucionPort cola;
+    private final com.guajiranet.migradoronu.comun.puertos.AuditTrailPort auditoria;
 
-    public EjecucionesController(ConsultarEjecucionesUseCase consultas, UserNamesPort nombres) {
+    public EjecucionesController(ConsultarEjecucionesUseCase consultas, UserNamesPort nombres,
+                                 com.guajiranet.migradoronu.ejecucion.puertos.salida.ColaDeEjecucionPort cola,
+                                 com.guajiranet.migradoronu.comun.puertos.AuditTrailPort auditoria) {
         this.consultas = consultas;
         this.nombres = nombres;
+        this.cola = cola;
+        this.auditoria = auditoria;
+    }
+
+    /** Reintenta las fallidas en el MISMO lote: vuelven a pendientes y el ejecutor las toma de nuevo. */
+    @PostMapping("/batches/{loteId}/retry-failed")
+    public ReintentoDto reintentar(@PathVariable long loteId, @RequestBody(required = false) ReintentarRequest cuerpo,
+                                   @AuthenticationPrincipal UsuarioAutenticado usuario, HttpServletRequest request) {
+        List<String> sns = cola.reintentarFallidas(loteId, cuerpo == null ? null : cuerpo.ejecuciones());
+        if (sns.isEmpty()) {
+            throw ErrorDeNegocio.datosInvalidos("No hay ONUs fallidas para reintentar en ese lote (o ya están en otro lote en curso).");
+        }
+        auditoria.record(com.guajiranet.migradoronu.comun.puertos.AuditEntry.builder(com.guajiranet.migradoronu.comun.puertos.ActorType.USUARIO,
+                        com.guajiranet.migradoronu.comun.puertos.AuditAction.LOTE_REINTENTADO)
+                .usuarioId(usuario.id()).ipOrigen(request.getRemoteAddr()).loteId(loteId).sistema("lotes")
+                .peticion(Map.of("onus", sns)).resultado("OK")
+                .mensaje(usuario.usuario() + " reintentó " + sns.size() + " ONU(s) fallidas en el mismo lote.").build());
+        return new ReintentoDto(sns.size(), sns);
     }
 
     @GetMapping("/batches/{loteId}/runs")

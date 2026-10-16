@@ -69,7 +69,7 @@ public class ConciliacionConfig {
     @Bean
     ClassifyOnusPort classifyOnus(SmartOltInventoryAdapter smartOltInventario, WisproDirectoryAdapter wisproDirectorio, OltProfilesQueryPort perfilesOlt,
                                   @Value("${migrador.perfil-origen:GUAJIRANET}") String perfilOrigen,
-                                  @Value("${migrador.marcas-onu:*}") String marcas,
+                                  @Value("${migrador.marcas-onu:Huawei}") String marcas,
                                   @Value("${MIGRADOR_EXIGIR_CONTRATO_WISPRO:false}") boolean exigirContrato,
                                   @Value("${MIGRADOR_VLAN_GESTION:46}") int vlanGestion,
                                   OltSettingsQueryPort olts, OnuParticipationQueryPort participacion, TargetProfilePort perfil,
