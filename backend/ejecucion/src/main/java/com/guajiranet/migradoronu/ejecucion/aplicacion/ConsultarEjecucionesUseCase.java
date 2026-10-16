@@ -84,6 +84,19 @@ public class ConsultarEjecucionesUseCase {
         return lecturas.porId(ejecucionId).orElseThrow();
     }
 
+    /** "Marcar todas como revisadas" en la pantalla Fallidas: una sola nota para todas. Devuelve cuántas se marcaron. */
+    public int revisarTodas(long usuarioId, String nota, String ipOrigen) {
+        String texto = nota == null || nota.isBlank() ? "Marcadas como revisadas todas a la vez desde la pantalla Fallidas." : nota.strip();
+        if (texto.length() < 10) {
+            throw ErrorDeNegocio.datosInvalidos("La nota de revisión debe tener al menos 10 caracteres.");
+        }
+        int marcadas = lecturas.marcarTodasRevisadas(usuarioId, texto, reloj.instant());
+        auditoria.record(AuditEntry.builder(ActorType.USUARIO, AuditAction.ONU_REVISADA).usuarioId(usuarioId).ipOrigen(ipOrigen)
+                .peticion(Map.of("nota", texto, "todas", true)).resultado("OK")
+                .mensaje(marcadas + " fallida(s) marcadas como revisadas a la vez: " + texto).build());
+        return marcadas;
+    }
+
     private static List<PasoVista> pasos(EjecucionVista e, List<EventoDeEjecucion> eventos) {
         boolean terminada = e.terminadaEn() != null;
         List<PasoVista> pasos = new ArrayList<>();

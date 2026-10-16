@@ -50,7 +50,7 @@ public class LotesController {
     public record LoteDto(long id, String numero, String modo, boolean simulacion, String estado, FiltrosDto filtros, String creadoPor,
                           Instant creadoEn, Instant venceEn, String confirmadoPor, Instant confirmadoEn, Instant iniciadoEn,
                           Instant terminadoEn, String motivoDetencion, String procedimientoVersion, Map<String, Long> contadores,
-                          long tiempoEstimadoMaximoMin) {
+                          long tiempoEstimadoMaximoMin, boolean archivado) {
     }
 
     public record DuplicadoDto(String olt, String tarjeta, int pon, int onuId, boolean enLinea) {
@@ -86,10 +86,17 @@ public class LotesController {
     }
 
     @GetMapping
-    public List<LoteDto> recientes(@RequestParam(defaultValue = "20") int limit) {
-        List<LoteDetalle> lotes = consultas.recientes(limit);
+    public List<LoteDto> recientes(@RequestParam(defaultValue = "20") int limit, @RequestParam(defaultValue = "false") boolean archivados) {
+        List<LoteDetalle> lotes = consultas.recientes(limit, archivados);
         Map<Long, String> quien = nombresDe(lotes);
         return lotes.stream().map(l -> dto(l, quien)).toList();
+    }
+
+    /** Archiva los lotes que ya no se mueven (terminados, detenidos, descartados, vistas previas vencidas). No borra nada. */
+    @PostMapping("/archive-finished")
+    public Map<String, Integer> archivarTerminados(@AuthenticationPrincipal UsuarioAutenticado usuario,
+                                                   jakarta.servlet.http.HttpServletRequest request) {
+        return Map.of("archivados", controlar.archivarTerminados(usuario.id(), request.getRemoteAddr()));
     }
 
     @GetMapping("/{id}")
@@ -195,7 +202,7 @@ public class LotesController {
                 quien.getOrDefault(l.creadoPor(), "Usuario " + l.creadoPor()), l.creadoEn(), l.venceEn(),
                 l.confirmadoPor() == null ? null : quien.getOrDefault(l.confirmadoPor(), "Usuario " + l.confirmadoPor()),
                 l.confirmadoEn(), l.iniciadoEn(), l.terminadoEn(), l.motivoDetencion(), l.procedimientoVersion(), l.contadores(),
-                entran * consultas.minutosEstimadosPorOnu());
+                entran * consultas.minutosEstimadosPorOnu(), l.archivado());
     }
 
     private static ItemDto dto(ClassifiedOnu c) {

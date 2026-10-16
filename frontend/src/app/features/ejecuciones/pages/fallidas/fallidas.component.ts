@@ -10,6 +10,7 @@ import { EMPTY, auditTime, catchError, filter, startWith, switchMap } from 'rxjs
 import { mensajeDeError } from '../../../../core/api/errores';
 import { TiempoRealService } from '../../../../core/realtime/tiempo-real.service';
 import { SistemaService } from '../../../../core/sistema/sistema.service';
+import { ConfirmarDialogoComponent, DatosConfirmacion } from '../../../../shared/dialogos/confirmar-dialogo.component';
 import { DatosRevision, RevisarFallidaDialogoComponent } from '../../../../shared/dialogos/revisar-fallida-dialogo.component';
 import { NOMBRES_PASO } from '../../../../shared/estados';
 import { HoraColombiaPipe } from '../../../../shared/formato/formato.pipes';
@@ -29,6 +30,11 @@ import { EjecucionOnu } from '../../models/ejecucion.model';
           <h1>Fallidas por revisar</h1>
           <p class="subtitulo">Cada ONU se detuvo en un paso y quedó como quedó: la herramienta no revierte nada sola. Revisa el detalle, haz lo que corresponda en la OLT por fuera de la herramienta y márcala como revisada con una nota. Hasta entonces no vuelve a entrar a un lote.</p>
         </div>
+        @if (fallidas().length > 1) {
+          <button mat-flat-button class="todas" [disabled]="marcandoTodas()" (click)="revisarTodas()">
+            <mat-icon>done_all</mat-icon> Marcar todas como revisadas ({{ fallidas().length }})
+          </button>
+        }
       </header>
       @if (cargando()) { <mat-progress-bar mode="indeterminate" /> }
       @if (error()) { <p class="aviso aviso-error"><mat-icon>error</mat-icon> {{ error() }}</p> }
@@ -49,7 +55,7 @@ import { EjecucionOnu } from '../../models/ejecucion.model';
                   <button mat-flat-button (click)="revisar(f)"><mat-icon>task_alt</mat-icon> Marcar revisada</button>
                 </div>
               </header>
-              <p class="aviso aviso-error"><mat-icon>cancel</mat-icon>
+              <p class="aviso aviso-fallida"><mat-icon>error_outline</mat-icon>
                 <span><span class="codigo-motivo">{{ f.codigo }}</span> {{ f.mensaje }}</span></p>
               <dl class="rejilla-datos">
                 <div><dt>Lote</dt><dd><a class="mono" [routerLink]="['/lotes', f.loteId]">{{ f.loteNumero }}</a></dd></div>
@@ -70,6 +76,8 @@ import { EjecucionOnu } from '../../models/ejecucion.model';
     .acciones { display: flex; gap: 8px; flex-wrap: wrap; }
     .secundario { color: var(--mat-sys-on-surface-variant); font-size: 13px; }
     .ok { color: var(--color-exito); }
+    .encabezado { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
+    .todas { flex-shrink: 0; }
   `,
 })
 export class FallidasComponent {
@@ -108,6 +116,39 @@ export class FallidasComponent {
 
   protected nombrePaso(f: EjecucionOnu): string {
     return f.pasoActual ? NOMBRES_PASO[f.pasoActual] : '';
+  }
+
+  protected readonly marcandoTodas = signal(false);
+
+  /** Todas de una vez, con confirmación: vuelven a poder entrar a un lote. */
+  protected revisarTodas(): void {
+    const cuantas = this.fallidas().length;
+    this.dialogo.open(ConfirmarDialogoComponent, {
+      width: '520px',
+      data: {
+        titulo: 'Marcar todas como revisadas',
+        mensaje: `Se marcarán como revisadas las ${cuantas} ONUs fallidas de esta lista, con la nota "Marcadas como revisadas todas a la vez desde la pantalla Fallidas."`,
+        detalle: 'No cambia nada en las ONUs ni en la OLT: solo las quita de esta lista y vuelven a poder escogerse en un lote nuevo.',
+        textoConfirmar: `Marcar las ${cuantas}`,
+        icono: 'done_all',
+      } satisfies DatosConfirmacion,
+    }).afterClosed()
+      .pipe(filter((si) => si === true), switchMap(() => {
+        this.marcandoTodas.set(true);
+        return this.ejecucionesService.marcarTodasRevisadas();
+      }))
+      .subscribe({
+        next: (r) => {
+          this.marcandoTodas.set(false);
+          this.fallidas.set([]);
+          this.sistema.refrescar();
+          this.avisos.open(`${r.revisadas} ONU(s) marcadas como revisadas.`, 'Cerrar', { duration: 4_000 });
+        },
+        error: (error: unknown) => {
+          this.marcandoTodas.set(false);
+          this.avisos.open(mensajeDeError(error), 'Cerrar', { duration: 6_000 });
+        },
+      });
   }
 
   protected revisar(f: EjecucionOnu): void {

@@ -41,7 +41,7 @@ final class ReglasDePermiso {
             return modulo(Modulo.LOTES, "ver las ONUs de las OLT");
         }
         if (ruta.startsWith("/api/v1/onu-runs")) {
-            if (ruta.endsWith("/failed") || ruta.endsWith("/review")) {
+            if (ruta.endsWith("/failed") || ruta.endsWith("/review") || ruta.endsWith("/review-all")) {
                 return modulo(Modulo.FALLIDAS, "revisar fallidas");
             }
             return modulo(Modulo.LOTES, "ver ejecuciones");

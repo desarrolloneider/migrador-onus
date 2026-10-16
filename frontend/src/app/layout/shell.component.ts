@@ -129,7 +129,7 @@ interface EnlaceMenu {
     .logo-guajiranet { width: 100%; height: auto; display: block; box-sizing: border-box; padding: 4px 2px; color-scheme: dark; }
     .marca .nombre { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; font-size: 14px; color: #fff; }
     .marca .nombre mat-icon { font-size: 18px; width: 18px; height: 18px; }
-    .contador-fallidas { background: var(--color-error); color: light-dark(#fff, #410002); border-radius: 999px; padding: 0 8px; font-size: 12px; font-weight: 600; line-height: 20px; }
+    .contador-fallidas { background: var(--color-fallida); color: light-dark(#fff, #3a1a08); border-radius: 999px; padding: 0 8px; font-size: 12px; font-weight: 600; line-height: 20px; }
     .barra { position: sticky; top: 0; z-index: 3; background: var(--mat-sys-surface); border-bottom: 1px solid var(--mat-sys-outline-variant); gap: 8px; height: 56px; }
     .espacio { flex: 1; }
     .ejecutor { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; padding: 4px 12px 4px 8px; border-radius: 999px;

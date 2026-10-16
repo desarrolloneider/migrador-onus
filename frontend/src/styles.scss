@@ -26,6 +26,9 @@ html {
   --fondo-exito: light-dark(#e4f3e9, #12301f);
   --color-error: light-dark(#b3261e, #ffb4ab);
   --fondo-error: light-dark(#fce8e6, #3b1412);
+  // Las ONUs fallidas: naranja terracota suave. Una fallida se revisa y se reintenta; el rojo queda para errores del sistema.
+  --color-fallida: light-dark(#b45a2d, #f4b08a);
+  --fondo-fallida: light-dark(#fcf0e8, #352219);
   --color-aviso: light-dark(#8a5300, #ffcf8a);
   --fondo-aviso: light-dark(#fff1dc, #352409);
   --color-info: light-dark(#0b5cad, #9ecaff);
@@ -44,6 +47,7 @@ html {
 .tono-exito { --color-tono: var(--color-exito); --fondo-tono: var(--fondo-exito); }
 .tono-error { --color-tono: var(--color-error); --fondo-tono: var(--fondo-error); }
 .tono-aviso { --color-tono: var(--color-aviso); --fondo-tono: var(--fondo-aviso); }
+.tono-fallida { --color-tono: var(--color-fallida); --fondo-tono: var(--fondo-fallida); }
 .tono-info { --color-tono: var(--color-info); --fondo-tono: var(--fondo-info); }
 .tono-progreso { --color-tono: var(--color-progreso); --fondo-tono: var(--fondo-progreso); }
 .tono-simulado { --color-tono: var(--color-simulado); --fondo-tono: var(--fondo-simulado); }
@@ -130,6 +134,7 @@ button.kpi:hover, a.kpi:hover { border-color: var(--mat-sys-primary); }
 .aviso strong { color: var(--color-tono); }
 .aviso-error { --color-tono: var(--color-error); --fondo-tono: var(--fondo-error); }
 .aviso-advertencia { --color-tono: var(--color-aviso); --fondo-tono: var(--fondo-aviso); }
+.aviso-fallida { --color-tono: var(--color-fallida); --fondo-tono: var(--fondo-fallida); }
 .aviso-exito { --color-tono: var(--color-exito); --fondo-tono: var(--fondo-exito); }
 .aviso-simulado { --color-tono: var(--color-simulado); --fondo-tono: var(--fondo-simulado); }
 
@@ -150,7 +155,7 @@ table.tabla tr:last-child td { border-bottom: 0; }
 table.tabla tr.clicable { cursor: pointer; }
 table.tabla tr.clicable:hover td { background: var(--mat-sys-surface-container-low); }
 table.tabla tr.resaltada td { background: color-mix(in srgb, var(--color-progreso) 8%, transparent); }
-table.tabla tr.con-falla td:first-child { box-shadow: inset 3px 0 0 var(--color-error); }
+table.tabla tr.con-falla td:first-child { box-shadow: inset 3px 0 0 var(--color-fallida); }
 table.tabla tr.detalle-fila td { background: var(--mat-sys-surface-container-low); }
 table.tabla .num { text-align: right; font-variant-numeric: tabular-nums; }
 table.tabla .secundario { color: var(--mat-sys-on-surface-variant); font-size: 12.5px; }

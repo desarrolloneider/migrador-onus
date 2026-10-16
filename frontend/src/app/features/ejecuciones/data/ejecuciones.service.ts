@@ -21,4 +21,9 @@ export class EjecucionesService {
   marcarRevisada(id: number, request: RevisarFallidaRequest): Observable<DetalleEjecucion> {
     return this.http.post<DetalleEjecucion>(`${this.baseUrl}/${id}/review`, request);
   }
+
+  /** Marca como revisadas todas las fallidas sin revisar, con una sola nota. */
+  marcarTodasRevisadas(nota?: string): Observable<{ revisadas: number }> {
+    return this.http.post<{ revisadas: number }>(`${this.baseUrl}/failed/review-all`, nota ? { nota } : {});
+  }
 }

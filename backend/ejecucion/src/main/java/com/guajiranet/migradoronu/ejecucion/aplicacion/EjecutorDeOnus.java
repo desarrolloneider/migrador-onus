@@ -241,6 +241,25 @@ public class EjecutorDeOnus {
             Contexto ctx = new Contexto(ActorType.PROCESO_EJECUTOR, t.confirmadoPor(), t.loteId(), t.ejecucionId(),
                     paso -> cola.avanzarPaso(t.ejecucionId(), paso));
             boolean real = !t.simulacion();
+            // Antes de tocar nada: las que no van a poder terminar quedan fuera sin cambios.
+            cola.avanzarPaso(t.ejecucionId(), "P01");
+            CambioDeServicioWanUnaOnu.Antes antes = servicio.revisarAntes(t);
+            if (!antes.enGenie()) {
+                cola.terminar(t.ejecucionId(), "EXCLUIDA_AL_EJECUTAR", "P01", "EXC_NO_EN_GENIEACS",
+                        "La ONU no está registrada en GenieACS: no se tocó (sin GenieACS no se le puede hacer el paso 3).");
+                return;
+            }
+            // SmartOLT a veces la muestra en línea cuando ya se apagó (479DC7B3, 16 de octubre): manda la OLT.
+            Optional<Boolean> enLinea = enLineaEnOlt(t, s);
+            if (enLinea.isPresent() && !enLinea.get()) {
+                cola.terminar(t.ejecucionId(), "EXCLUIDA_AL_EJECUTAR", "P01", "EXC_FUERA_DE_LINEA",
+                        "La ONU está fuera de línea en la OLT: no se tocó.");
+                return;
+            }
+            if (antes.reportaPorInternet() != null) {
+                ejecutarYaPorInternet(t, s, ctx, antes.reportaPorInternet());
+                return;
+            }
             prepararServicioWan(t, ctx);
             Resultado r1 = gestion.ejecutar(t, vlanGestion, real, ctx);
             if (r1.fin() == Final.EXCLUIDA) {
@@ -272,6 +291,60 @@ public class EjecutorDeOnus {
             ejecutarServicio(t, s);
         } catch (RuntimeException e) {
             cola.terminar(t.ejecucionId(), "FALLIDA", "P01", "FALLO_SISTEMA_NO_RESPONDE", "El ejecutor no pudo procesar la ONU: " + e.getMessage());
+        }
+    }
+
+    /** ¿Está en línea según la OLT (display ont info)? Vacío si no se pudo leer: entonces se sigue y lo dice cada paso. */
+    private Optional<Boolean> enLineaEnOlt(TrabajoOnu t, SesionOlt s) {
+        String[] tarjeta = t.tarjeta().split("/");
+        synchronized (s) {
+            try {
+                OltConsolePort c = s.compartida();
+                if (c.prompt().contains("-if-")) {
+                    c.ejecutar("quit");
+                }
+                c.ejecutar("enable");
+                String foto = c.ejecutar("display ont info " + tarjeta[0].strip() + " " + tarjeta[1].strip() + " " + t.pon() + " " + t.onuId());
+                return com.guajiranet.migradoronu.procedimientos.dominio.LecturaOntHuawei.leer(foto)
+                        .map(com.guajiranet.migradoronu.procedimientos.dominio.LecturaOntHuawei::enLinea);
+            } catch (RuntimeException e) {
+                s.descartar();
+                return Optional.empty();
+            }
+        }
+    }
+
+    /**
+     * La ONU ya hace TR-069 por su IP de internet (por ejemplo, EG8145V5 configuradas así desde antes): no necesita VLAN 46
+     * ni cambio de servicio. Solo se le asegura GUAJIRANET1 en la OLT, que es lo que la deja apuntando a GenieACS si se resetea.
+     */
+    private void ejecutarYaPorInternet(TrabajoOnu t, SesionOlt s, Contexto ctx, String ip) {
+        String[] tarjeta = t.tarjeta().split("/");
+        Objetivo objetivo = new Objetivo(t.oltCodigo(), Integer.parseInt(tarjeta[0].strip()), Integer.parseInt(tarjeta[1].strip()),
+                t.pon(), t.onuId(), t.perfilesOrigen() == null ? List.of(perfilOrigen, "SmartOLT", CambioDePerfilUnaOnu.SIN_PERFIL) : t.perfilesOrigen(),
+                t.perfilDestino(), false, false, t.sn(), null);
+        Resultado r;
+        synchronized (s) {
+            r = cambio.ejecutar(objetivo, !t.simulacion(), ctx, s::compartida);
+            if (r.fin() == Final.FALLIDA) {
+                s.descartar();
+            }
+        }
+        String inicio = "Ya se reportaba a GenieACS por internet (" + ip + "): no necesitó VLAN 46 ni cambio de servicio. ";
+        switch (r.fin()) {
+            case COMPLETADA, YA_TENIA, SIMULADA -> {
+                cola.terminar(t.ejecucionId(), "COMPLETADA", r.paso(), null, inicio
+                        + (r.fin() == Final.COMPLETADA ? "Se le puso " + t.perfilDestino() + "." : r.fin() == Final.YA_TENIA
+                        ? "Ya tenía " + t.perfilDestino() + "." : r.mensaje()));
+                if (r.fin() == Final.COMPLETADA && r.real() && t.guardar()) {
+                    synchronized (s) {
+                        s.sinGuardar.add(t.ejecucionId());
+                    }
+                }
+            }
+            case EXCLUIDA -> cola.terminar(t.ejecucionId(), "EXCLUIDA_AL_EJECUTAR", r.paso(), r.codigoFallo(), inicio + r.mensaje());
+            case FALLIDA -> cola.terminar(t.ejecucionId(), "FALLIDA", r.paso(), r.codigoFallo() == null ? "FALLO_OLT_RECHAZO" : r.codigoFallo(),
+                    inicio + "No se pudo poner " + t.perfilDestino() + ": " + r.mensaje());
         }
     }
 

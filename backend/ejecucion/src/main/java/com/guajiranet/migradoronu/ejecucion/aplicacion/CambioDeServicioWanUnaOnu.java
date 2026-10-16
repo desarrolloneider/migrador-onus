@@ -42,10 +42,12 @@ public class CambioDeServicioWanUnaOnu {
     /** Cada cuánto se vuelve a mirar GenieACS (la ONU se reporta cada pocos segundos desde que bajaron el intervalo). */
     static final Duration ESPERA = Duration.ofSeconds(5);
     /**
-     * Hasta 5 minutos esperando la verificación. Las ONUs no se reinician nunca (decisión del 15 de octubre): tienen que
-     * reaccionar solas, por connection request o en su siguiente reporte.
+     * Hasta 2 minutos esperando la verificación: con la etiqueta, todas las que salieron bien el 16 de octubre confirmaron
+     * en 25 a 40 s (antes se esperaban 5 minutos y solo alargaba las que no iban a responder).
      */
-    static final int VERIFICACIONES = 60;
+    static final int VERIFICACIONES = 24;
+    /** Un reporte a GenieACS más viejo que esto no sirve para decir que la ONU ya se reporta por internet. */
+    static final Duration REPORTE_RECIENTE = Duration.ofDays(2);
     /** La etiqueta de GenieACS que activa el preset "migrador_servicio_wan" (creado el 16 de octubre). */
     public static final String ETIQUETA = "migrar_wan";
     static final List<String> RUTAS_POR_DEFECTO = List.of(
@@ -164,8 +166,8 @@ public class CambioDeServicioWanUnaOnu {
                 r.paso("P05", "GenieACS: " + servicio.get() + " = TR069_INTERNET; " + tr069.get() + " = OTHER", confirmo ? "done" : "sin confirmar",
                         true, confirmo ? "La ONU aceptó el cambio." : "Cambio enviado; la ONU no lo confirmó en el momento (normal: reinicia sus conexiones).");
             }
-            // P06: verificar en GenieACS cada 5 s y en la OLT cada 10 s (GenieACS tarda ~10 minutos en registrar la
-            // sesión en que la ONU cambió: 3DF122AE, 16 de octubre). Cada 30 s se la vuelve a despertar.
+            // P06: verificar en GenieACS y en la OLT cada 5 s (GenieACS tarda ~10 minutos en registrar la sesión en que la
+            // ONU cambió: 3DF122AE, 16 de octubre; la OLT lo muestra al instante). Cada 30 s se la vuelve a despertar.
             EstadoServicioWan despues = antes;
             String verificadoEn = null;
             for (int i = 0; i < VERIFICACIONES && verificadoEn == null; i++) {
@@ -177,7 +179,7 @@ public class CambioDeServicioWanUnaOnu {
                 }
                 if (despues.listo()) {
                     verificadoEn = "GenieACS: " + despues.describir();
-                } else if (i % 2 == 1) {
+                } else {
                     Optional<String> wan = leerWanEnOlt(t, consola, candado);
                     if (wan.map(CambioDeServicioWanUnaOnu::listoEnOlt).orElse(false)) {
                         verificadoEn = "la OLT: " + servicios(wan.get());
@@ -196,7 +198,8 @@ public class CambioDeServicioWanUnaOnu {
                         fallosGenie.isEmpty() ? "GenieACS no tiene fallos de la ONU: el cambio no le llegó o no lo aplicó."
                                 : "GenieACS tiene fallos de la ONU: " + String.join(" | ", fallosGenie));
                 return fallarYLimpiar(r, t, true, ctx, consola, candado, diferirGuardado, "P06", "FALLO_VERIFICACION",
-                        "GenieACS no confirmó TR069_INTERNET/OTHER en 5 minutos."
+                        "Ni la OLT ni GenieACS mostraron TR069_INTERNET/OTHER en 2 minutos: la ONU no se reportó a GenieACS por la VLAN 46"
+                                + " (lo más común: IP de gestión repetida en el DHCP)."
                                 + (fallosGenie.isEmpty() ? "" : " GenieACS dice: " + String.join(" | ", fallosGenie)));
             }
         }
@@ -244,6 +247,29 @@ public class CambioDeServicioWanUnaOnu {
                     .build());
         } catch (RuntimeException ignorada) {
             // GenieACS caído no detiene los pasos 1 y 2: el paso 3 vuelve a intentarlo.
+        }
+    }
+
+    /**
+     * Lo que se sabe de la ONU en GenieACS antes de tocarla (lote "Los 3 pasos").
+     *
+     * @param enGenie            false si GenieACS no la tiene: sin GenieACS no hay paso 3
+     * @param reportaPorInternet la IP de internet por la que ya se reporta (su TR-069 ya va por internet), o null
+     */
+    public record Antes(boolean enGenie, String reportaPorInternet) {
+    }
+
+    public Antes revisarAntes(TrabajoOnu t) {
+        try {
+            Optional<EstadoServicioWan> e = genie.leer(t.sn());
+            if (e.isEmpty()) {
+                return new Antes(false, null);
+            }
+            boolean reciente = System.currentTimeMillis() - e.get().ultimoInformMs() <= REPORTE_RECIENTE.toMillis();
+            return new Antes(true, reciente ? e.get().reportaPorInternet() : null);
+        } catch (RuntimeException ex) {
+            // GenieACS no contestó: se sigue; el paso 3 lo vuelve a consultar.
+            return new Antes(true, null);
         }
     }
 

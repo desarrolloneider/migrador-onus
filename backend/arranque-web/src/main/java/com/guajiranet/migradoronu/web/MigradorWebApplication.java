@@ -69,7 +69,19 @@ public class MigradorWebApplication {
         if (args.length > 1 && args[0].equals("perfiles-crudo")) {
             System.exit(perfilesCrudo(args[1]));
         }
+        if (args.length > 0 && args[0].equals("archivar-lotes")) {
+            System.exit(archivarLotes());
+        }
         new SpringApplicationBuilder(MigradorWebApplication.class).run(args);
+    }
+
+    /** Archiva los lotes que ya no se mueven (no borra nada); queda en la auditoría como hecho desde la consola. */
+    private static int archivarLotes() {
+        try (ConfigurableApplicationContext contexto = contextoDeConsola()) {
+            int n = contexto.getBean(com.guajiranet.migradoronu.lotes.puertos.entrada.ControlBatchPort.class).archivarTerminados(null, null);
+            System.out.println(n + " lote(s) archivados. No se borró nada: siguen en la auditoría y el historial.");
+            return 0;
+        }
     }
 
     /** Solo lectura: imprime tal cual la tabla de perfiles TR-069 y el bound-info de cada uno (solo puertos y números). */

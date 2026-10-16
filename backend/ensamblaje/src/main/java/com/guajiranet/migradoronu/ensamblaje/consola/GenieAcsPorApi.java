@@ -69,7 +69,34 @@ public class GenieAcsPorApi implements GenieAcsPort, com.guajiranet.migradoronu.
             servicios.putAll(deducir(d));
         }
         String inform = valor(d.get("Events.Inform"));
-        return Optional.of(new EstadoServicioWan(valor(d.get("DeviceID.ID")), inform == null ? 0 : Long.parseLong(inform), servicios));
+        return Optional.of(new EstadoServicioWan(valor(d.get("DeviceID.ID")), inform == null ? 0 : Long.parseLong(inform), servicios,
+                reportaPorInternet(d)));
+    }
+
+    /**
+     * La IP de internet por la que la ONU se reporta, si su TR-069 ya va por la WAN de internet: el host de
+     * ConnectionRequestURL es la IP de una de sus conexiones y esa conexión no es la de TR-069 (7C3B04AD, EG8145V5, 16 de
+     * octubre: GenieACS nunca leyó su X_HW_SERVICELIST, pero se reportaba por 10.41.2.42). Las redes de gestión son 192.168.x.
+     */
+    static String reportaPorInternet(JsonNode d) {
+        String url = valor(d.get("InternetGatewayDevice.ManagementServer.ConnectionRequestURL"));
+        if (url == null) {
+            return null;
+        }
+        String host = url.replaceFirst("^[a-z]+://", "").replaceFirst("[:/].*$", "");
+        if (host.isBlank() || host.startsWith("192.168.") || host.startsWith("0.")) {
+            return null;
+        }
+        for (int c = 1; c <= 4; c++) {
+            String base = WAN + "." + c + ".WANIPConnection.1.";
+            String servicio = valor(d.get(base + "X_HW_SERVICELIST"));
+            // Con INTERNET solo, el TR-069 no puede ir por esa conexión (el dato está viejo); TR069 y OTHER son de gestión.
+            boolean noLlevaTr069PorInternet = servicio != null && (servicio.equals("TR069") || servicio.equals("OTHER") || servicio.equals("INTERNET"));
+            if (host.equals(valor(d.get(base + "ExternalIPAddress"))) && !noLlevaTr069PorInternet) {
+                return host;
+            }
+        }
+        return null;
     }
 
     /**

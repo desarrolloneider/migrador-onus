@@ -14,9 +14,23 @@ import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerCo
 @EnableWebSocketMessageBroker
 public class TiempoRealConfig implements WebSocketMessageBrokerConfigurer {
 
+    /**
+     * Por defecto el saludo solo se acepta del mismo origen. Detrás de un nginx con TLS el backend ve http y el navegador
+     * manda {@code Origin: https://...}: no coinciden y la pantalla queda en "Sin conexión en vivo". Con
+     * MIGRADOR_ORIGENES_WS (separados por coma, por ejemplo {@code https://migrador.guajiranet.com}) se aceptan esos.
+     */
+    private final String[] origenes;
+
+    public TiempoRealConfig(@org.springframework.beans.factory.annotation.Value("${MIGRADOR_ORIGENES_WS:}") String origenes) {
+        this.origenes = java.util.Arrays.stream(origenes.split(",")).map(String::strip).filter(o -> !o.isEmpty()).toArray(String[]::new);
+    }
+
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registro) {
-        registro.addEndpoint("/ws");
+        var punto = registro.addEndpoint("/ws");
+        if (origenes.length > 0) {
+            punto.setAllowedOriginPatterns(origenes);
+        }
     }
 
     @Override

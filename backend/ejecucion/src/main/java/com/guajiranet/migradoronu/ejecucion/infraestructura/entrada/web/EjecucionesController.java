@@ -113,6 +113,13 @@ public class EjecucionesController {
         return dto(consultas.detalle(id).orElseThrow(() -> ErrorDeNegocio.noEncontrado("No existe esa ejecución.")));
     }
 
+    /** Marca como revisadas todas las fallidas sin revisar. Cuerpo opcional: {"nota": "..."}. */
+    @PostMapping("/onu-runs/failed/review-all")
+    public Map<String, Integer> revisarTodas(@RequestBody(required = false) RevisarRequest cuerpo, @AuthenticationPrincipal UsuarioAutenticado usuario,
+                                             HttpServletRequest request) {
+        return Map.of("revisadas", consultas.revisarTodas(usuario.id(), cuerpo == null ? null : cuerpo.nota(), request.getRemoteAddr()));
+    }
+
     @PostMapping("/onu-runs/{id}/review")
     public DetalleDto revisar(@PathVariable long id, @RequestBody RevisarRequest cuerpo, @AuthenticationPrincipal UsuarioAutenticado usuario,
                               HttpServletRequest request) {

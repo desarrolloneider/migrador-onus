@@ -17,4 +17,7 @@ public interface LecturasDeEjecucionPort {
 
     /** Marca la fallida como revisada. Devuelve false si no era una fallida sin revisar. */
     boolean marcarRevisada(long ejecucionId, long usuarioId, String nota, Instant ahora);
+
+    /** Marca como revisadas todas las fallidas sin revisar (las mismas de la pantalla Fallidas). Devuelve cuántas. */
+    int marcarTodasRevisadas(long usuarioId, String nota, Instant ahora);
 }

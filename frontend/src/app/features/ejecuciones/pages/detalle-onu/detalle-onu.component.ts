@@ -232,13 +232,13 @@ import { DetalleEjecucion } from '../../models/ejecucion.model';
     .punto { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; z-index: 1;
       background: color-mix(in srgb, var(--c) 18%, var(--mat-sys-surface-container-low)); color: var(--c); }
     .punto mat-icon { font-size: 17px; width: 17px; height: 17px; }
-    .t-exito { --c: var(--color-exito); } .t-error { --c: var(--color-error); } .t-aviso { --c: var(--color-aviso); }
+    .t-exito { --c: var(--color-exito); } .t-error { --c: var(--color-fallida); } .t-aviso { --c: var(--color-aviso); }
     .t-info { --c: var(--color-info); } .t-simulado { --c: var(--color-simulado); }
     .cuerpo { min-width: 0; padding-top: 4px; }
     .titulo { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
     .paso { font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 6px; background: var(--mat-sys-surface-container-highest); }
     .descripcion { font-size: 13.5px; line-height: 1.4; flex: 1; min-width: 180px; }
-    .t-error .descripcion { color: var(--color-error); font-weight: 600; }
+    .t-error .descripcion { color: var(--color-fallida); font-weight: 600; }
     .hora { font-variant-numeric: tabular-nums; font-size: 12px; color: var(--mat-sys-on-surface-variant); white-space: nowrap; }
     .linea-comando { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 6px; }
     .cmd { display: inline-flex; align-items: center; gap: 6px; font-family: var(--fuente-mono); font-size: 12px; padding: 4px 10px; border-radius: 8px;
@@ -268,7 +268,7 @@ import { DetalleEjecucion } from '../../models/ejecucion.model';
     .paso-tecnico { border: 1px solid var(--mat-sys-outline-variant); border-radius: 14px; background: var(--mat-sys-surface-container-low);
       overflow: hidden; transition: border-color .15s ease; }
     .paso-tecnico:hover { border-color: color-mix(in srgb, var(--mat-sys-primary) 40%, transparent); }
-    .paso-tecnico.falla { border-color: color-mix(in srgb, var(--color-error) 55%, transparent); }
+    .paso-tecnico.falla { border-color: color-mix(in srgb, var(--color-fallida) 55%, transparent); }
     .paso-tecnico summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 10px; padding: 10px 14px; flex-wrap: wrap; }
     .paso-tecnico summary::-webkit-details-marker { display: none; }
     .flecha { transition: transform .18s ease; color: var(--mat-sys-on-surface-variant); }
@@ -367,7 +367,7 @@ export class DetalleOnuComponent implements OnInit {
   protected readonly datosSmartOlt = computed(() => Object.entries(this.detalle()?.fotografiaPrevia?.datosSmartOlt ?? {}));
   protected readonly claseAviso = computed(() => {
     const estado = this.detalle()?.estado;
-    return estado === 'FALLIDA' ? 'aviso aviso-error'
+    return estado === 'FALLIDA' ? 'aviso aviso-fallida'
       : estado === 'EXCLUIDA_AL_EJECUTAR' ? 'aviso aviso-advertencia'
         : estado === 'COMPLETADA' ? (this.detalle()?.simulacion ? 'aviso aviso-simulado' : 'aviso aviso-exito') : 'aviso';
   });

@@ -13,4 +13,12 @@ public interface ControlBatchPort {
     BatchView discard(DiscardBatchCommand command);
 
     BatchView stop(StopBatchCommand command);
+
+    /**
+     * Archiva los lotes que ya no se mueven: dejan de salir en la lista, sin borrar nada. Con {@code usuarioId} null lo hace
+     * la consola. Devuelve cuántos se archivaron.
+     */
+    default int archivarTerminados(Long usuarioId, String ipOrigen) {
+        throw new UnsupportedOperationException("Archivar no está disponible");
+    }
 }

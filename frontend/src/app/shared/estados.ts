@@ -2,7 +2,7 @@ import { CodigoPaso, EstadoEjecucion, EstadoPaso } from '../features/ejecuciones
 import { ResultadoHistorial } from '../features/historial/models/historial.model';
 import { EstadoLote, GrupoVistaPrevia } from '../features/lotes/models/lote.model';
 
-export type Tono = 'neutro' | 'info' | 'progreso' | 'exito' | 'aviso' | 'error' | 'simulado';
+export type Tono = 'neutro' | 'info' | 'progreso' | 'exito' | 'aviso' | 'fallida' | 'error' | 'simulado';
 
 /** Cómo se muestra un estado: siempre icono y texto, no solo color (RNF-09). */
 export interface Presentacion {
@@ -27,7 +27,7 @@ export const ESTADOS_EJECUCION: Record<EstadoEjecucion, Presentacion> = {
   REVALIDANDO: { etiqueta: 'Revalidando', icono: 'fact_check', tono: 'progreso' },
   EN_CURSO: { etiqueta: 'En curso', icono: 'autorenew', tono: 'progreso' },
   COMPLETADA: { etiqueta: 'Completada', icono: 'check_circle', tono: 'exito' },
-  FALLIDA: { etiqueta: 'Fallida', icono: 'cancel', tono: 'error' },
+  FALLIDA: { etiqueta: 'Fallida', icono: 'error_outline', tono: 'fallida' },
   EXCLUIDA_AL_EJECUTAR: { etiqueta: 'Excluida al ejecutar', icono: 'remove_circle', tono: 'aviso' },
   NO_INICIADA: { etiqueta: 'No iniciada', icono: 'do_not_disturb_on', tono: 'neutro' },
 };
@@ -37,14 +37,14 @@ export const ESTADOS_PASO: Record<EstadoPaso, Presentacion> = {
   EN_CURSO: { etiqueta: 'En curso', icono: 'autorenew', tono: 'progreso' },
   CORRECTO: { etiqueta: 'Correcto', icono: 'check_circle', tono: 'exito' },
   YA_ESTABA: { etiqueta: 'Ya estaba', icono: 'task_alt', tono: 'exito' },
-  FALLIDO: { etiqueta: 'Fallido', icono: 'cancel', tono: 'error' },
+  FALLIDO: { etiqueta: 'Fallido', icono: 'error_outline', tono: 'fallida' },
   NO_EJECUTADO: { etiqueta: 'No ejecutado', icono: 'remove', tono: 'neutro' },
   SIMULADO: { etiqueta: 'Simulado', icono: 'science', tono: 'simulado' },
 };
 
 export const RESULTADOS_HISTORIAL: Record<ResultadoHistorial, Presentacion> = {
   CORREGIDA: { etiqueta: 'Corregida', icono: 'check_circle', tono: 'exito' },
-  FALLIDA: { etiqueta: 'Fallida', icono: 'cancel', tono: 'error' },
+  FALLIDA: { etiqueta: 'Fallida', icono: 'error_outline', tono: 'fallida' },
   EXCLUIDA: { etiqueta: 'Excluida', icono: 'remove_circle', tono: 'aviso' },
   YA_TENIA_PERFIL: { etiqueta: 'Ya tenía el perfil', icono: 'task_alt', tono: 'info' },
 };

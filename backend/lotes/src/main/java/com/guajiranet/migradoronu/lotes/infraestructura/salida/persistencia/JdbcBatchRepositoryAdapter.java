@@ -93,9 +93,24 @@ public class JdbcBatchRepositoryAdapter implements BatchRepositoryPort {
     }
 
     @Override
-    public List<LoteDetalle> recientes(int limite) {
-        return jdbc.sql(LOTE + " ORDER BY l.creado_en DESC LIMIT ?").param(Math.max(1, Math.min(limite, 200)))
+    public List<LoteDetalle> recientes(int limite, boolean conArchivados) {
+        return jdbc.sql(LOTE + (conArchivados ? "" : " WHERE NOT l.archivado") + " ORDER BY l.creado_en DESC LIMIT ?")
+                .param(Math.max(1, Math.min(limite, 200)))
                 .query(JdbcBatchRepositoryAdapter::lote).list();
+    }
+
+    @Override
+    public List<String> archivarTerminados(Instant ahora) {
+        // Los que ya no se mueven: terminados, detenidos, descartados y las vistas previas vencidas.
+        return jdbc.sql("""
+                        UPDATE lotes SET archivado = TRUE, archivado_en = ?
+                        WHERE NOT archivado
+                          AND (estado IN ('TERMINADO', 'TERMINADO_CON_FALLAS', 'DETENIDO', 'DESCARTADO')
+                               OR (estado = 'VISTA_PREVIA' AND vence_en < ?))
+                        RETURNING numero
+                        """)
+                .params(Timestamp.from(ahora), Timestamp.from(ahora))
+                .query(String.class).list();
     }
 
     @Override
@@ -169,7 +184,7 @@ public class JdbcBatchRepositoryAdapter implements BatchRepositoryPort {
                         rs.getString("tipo")),
                 rs.getLong("creado_por"), instante(rs, "creado_en"), instante(rs, "vence_en"), confirmado,
                 instante(rs, "confirmado_en"), instante(rs, "iniciado_en"), instante(rs, "terminado_en"),
-                rs.getString("motivo_detencion"), rs.getString("procedimiento_version"), contadores);
+                rs.getString("motivo_detencion"), rs.getString("procedimiento_version"), contadores, rs.getBoolean("archivado"));
     }
 
     private static ClassifiedOnu item(ResultSet rs, int n) throws SQLException {

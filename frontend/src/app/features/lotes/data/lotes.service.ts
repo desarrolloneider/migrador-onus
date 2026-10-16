@@ -18,8 +18,13 @@ export class LotesService {
   private readonly http = inject(HttpClient);
   private readonly baseUrl = `${environment.apiUrl}/batches`;
 
-  listarRecientes(limite = 20): Observable<Lote[]> {
-    return this.http.get<Lote[]>(this.baseUrl, { params: { limit: limite } });
+  listarRecientes(limite = 20, archivados = false): Observable<Lote[]> {
+    return this.http.get<Lote[]>(this.baseUrl, { params: { limit: limite, archivados } });
+  }
+
+  /** Archiva los lotes que ya no se mueven (terminados, detenidos, descartados y vistas previas vencidas). No borra nada. */
+  archivarTerminados(): Observable<{ archivados: number }> {
+    return this.http.post<{ archivados: number }>(`${this.baseUrl}/archive-finished`, {});
   }
 
   consultar(id: number): Observable<Lote> {

@@ -56,6 +56,8 @@ export interface Lote {
   contadores: ContadoresLote;
   /** Cuánto podría tardar el lote como máximo (ESP-04). */
   tiempoEstimadoMaximoMin: number;
+  /** Archivado: no sale en la lista salvo con "Ver archivados". No se borró nada. */
+  archivado?: boolean;
 }
 
 /** Un registro repetido de SmartOLT que no se usó (RN-35). */

@@ -9,11 +9,14 @@ import { MatPaginatorModule } from '@angular/material/paginator';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatSelectModule } from '@angular/material/select';
 import { Router, RouterLink } from '@angular/router';
-import { EMPTY, auditTime, catchError, startWith, switchMap } from 'rxjs';
+import { MatDialog } from '@angular/material/dialog';
+import { MatSnackBar } from '@angular/material/snack-bar';
+import { EMPTY, Subject, auditTime, catchError, filter, merge, startWith, switchMap } from 'rxjs';
+import { ConfirmarDialogoComponent, DatosConfirmacion } from '../../../../shared/dialogos/confirmar-dialogo.component';
 import { mensajeDeError } from '../../../../core/api/errores';
 import { TiempoRealService } from '../../../../core/realtime/tiempo-real.service';
 import { EstadoChipComponent } from '../../../../shared/estado-chip/estado-chip.component';
-import { ESTADOS_LOTE, INDIVIDUAL, SIMULACION, describirFiltros } from '../../../../shared/estados';
+import { ESTADOS_LOTE, INDIVIDUAL, Presentacion, SIMULACION, describirFiltros } from '../../../../shared/estados';
 import { HoraColombiaPipe } from '../../../../shared/formato/formato.pipes';
 import { LotesService } from '../../data/lotes.service';
 import { EstadoLote, Lote } from '../../models/lote.model';
@@ -47,7 +50,15 @@ function diaEnColombia(iso: string): string {
           <h1>Lotes</h1>
           <p class="subtitulo">Todos los lotes y pruebas individuales: vistas previas, simulaciones y cambios reales. Haz clic en uno para abrirlo.</p>
         </div>
-        <a mat-flat-button routerLink="/lotes/nuevo"><mat-icon>add</mat-icon> Nuevo lote</a>
+        <div class="acciones-encabezado">
+          <button mat-stroked-button type="button" (click)="alternarArchivados()">
+            <mat-icon>{{ verArchivados() ? 'visibility_off' : 'inventory_2' }}</mat-icon> {{ verArchivados() ? 'Ocultar archivados' : 'Ver archivados' }}
+          </button>
+          <button mat-stroked-button type="button" [disabled]="archivando()" (click)="archivarTerminados()">
+            <mat-icon>archive</mat-icon> Archivar terminados
+          </button>
+          <a mat-flat-button routerLink="/lotes/nuevo"><mat-icon>add</mat-icon> Nuevo lote</a>
+        </div>
       </header>
 
       <section class="tarjeta">
@@ -109,6 +120,7 @@ function diaEnColombia(iso: string): string {
                     <div class="etiquetas">
                       @if (lote.simulacion) { <app-estado-chip [presentacion]="simulacion" compacto /> }
                       @if (lote.modo === 'INDIVIDUAL') { <app-estado-chip [presentacion]="individual" compacto /> }
+                @if (lote.archivado) { <app-estado-chip [presentacion]="archivadoChip" compacto /> }
                     </div>
                   </td>
                   <td><app-estado-chip [presentacion]="estados[lote.estado]" /></td>
@@ -155,9 +167,10 @@ function diaEnColombia(iso: string): string {
     .numero { font-weight: 600; }
     .etiquetas { display: flex; gap: 4px; margin-top: 4px; flex-wrap: wrap; }
     .secundario { color: var(--mat-sys-on-surface-variant); font-size: 12.5px; }
-    .falla { color: var(--color-error); font-weight: 500; }
+    .falla { color: var(--color-fallida); font-weight: 500; }
     .vacio { text-align: center; color: var(--mat-sys-on-surface-variant); padding: 24px; }
     @media (max-width: 700px) { .tipo, .buscar, .fecha { width: 100%; } .filtros-derecha { width: 100%; } }
+    .acciones-encabezado { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
   `,
 })
 export class ListaLotesComponent {
@@ -166,6 +179,13 @@ export class ListaLotesComponent {
   protected readonly estados = ESTADOS_LOTE;
   protected readonly simulacion = SIMULACION;
   protected readonly individual = INDIVIDUAL;
+  protected readonly archivadoChip: Presentacion = { etiqueta: 'Archivado', icono: 'inventory_2', tono: 'neutro' };
+  private readonly dialogo = inject(MatDialog);
+  private readonly avisos = inject(MatSnackBar);
+  /** Con "Ver archivados" también salen los lotes archivados (marcados como tales). */
+  protected readonly verArchivados = signal(false);
+  protected readonly archivando = signal(false);
+  private readonly recarga = new Subject<void>();
 
   protected readonly lotes = signal<Lote[]>([]);
   protected readonly cargando = signal(true);
@@ -214,8 +234,8 @@ export class ListaLotesComponent {
       untracked(() => this.indice.set(0));
     });
     // Se vuelve a pedir con cada aviso del canal del sistema (y cada pocos segundos mientras no haya avisos del ejecutor).
-    inject(TiempoRealService).escuchar('sistema')
-      .pipe(startWith(null), auditTime(500), switchMap(() => this.lotesService.listarRecientes(200).pipe(
+    merge(inject(TiempoRealService).escuchar('sistema'), this.recarga)
+      .pipe(startWith(null), auditTime(500), switchMap(() => this.lotesService.listarRecientes(200, this.verArchivados()).pipe(
         // Un error (por ejemplo, el servidor reiniciándose) se muestra, pero no corta la escucha: el siguiente aviso reintenta.
         catchError((error: unknown) => {
           this.error.set(mensajeDeError(error));
@@ -232,6 +252,40 @@ export class ListaLotesComponent {
         error: (error: unknown) => {
           this.error.set(mensajeDeError(error));
           this.cargando.set(false);
+        },
+      });
+  }
+
+  protected alternarArchivados(): void {
+    this.verArchivados.update((v) => !v);
+    this.recarga.next();
+  }
+
+  /** Archiva los terminados, detenidos, descartados y vistas previas vencidas: dejan de salir aquí, sin borrar nada. */
+  protected archivarTerminados(): void {
+    this.dialogo.open(ConfirmarDialogoComponent, {
+      width: '520px',
+      data: {
+        titulo: 'Archivar lotes terminados',
+        mensaje: 'Los lotes terminados, detenidos, descartados y las vistas previas vencidas dejarán de salir en esta lista.',
+        detalle: 'No se borra nada: siguen en la auditoría y el historial, y se pueden ver con "Ver archivados". Los lotes en curso no se tocan.',
+        textoConfirmar: 'Archivar',
+        icono: 'archive',
+      } satisfies DatosConfirmacion,
+    }).afterClosed()
+      .pipe(filter((si) => si === true), switchMap(() => {
+        this.archivando.set(true);
+        return this.lotesService.archivarTerminados();
+      }))
+      .subscribe({
+        next: (r) => {
+          this.archivando.set(false);
+          this.recarga.next();
+          this.avisos.open(`${r.archivados} lote(s) archivados.`, 'Cerrar', { duration: 4_000 });
+        },
+        error: (error: unknown) => {
+          this.archivando.set(false);
+          this.avisos.open(mensajeDeError(error), 'Cerrar', { duration: 6_000 });
         },
       });
   }

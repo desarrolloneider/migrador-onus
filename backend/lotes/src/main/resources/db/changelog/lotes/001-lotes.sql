@@ -98,3 +98,9 @@ ALTER TABLE lotes ADD CONSTRAINT ck_lotes_tipo CHECK (tipo IN ('PERFIL_TR069', '
 ALTER TABLE lotes DROP CONSTRAINT ck_lotes_tipo;
 ALTER TABLE lotes ADD CONSTRAINT ck_lotes_tipo CHECK (tipo IN ('PERFIL_TR069', 'VLAN_GESTION', 'SERVICIO_WAN', 'TRES_PASOS'));
 --rollback ALTER TABLE lotes DROP CONSTRAINT ck_lotes_tipo; ALTER TABLE lotes ADD CONSTRAINT ck_lotes_tipo CHECK (tipo IN ('PERFIL_TR069', 'VLAN_GESTION', 'SERVICIO_WAN'));
+
+--changeset migrador:lotes-014-archivado
+--comment: Lotes archivados: no salen en la lista (limpieza del 16 de octubre), pero no se borra nada: la auditoría, el historial y la detección de las ONUs ya listas siguen usándolos.
+ALTER TABLE lotes ADD COLUMN archivado BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE lotes ADD COLUMN archivado_en TIMESTAMPTZ;
+--rollback ALTER TABLE lotes DROP COLUMN archivado_en; ALTER TABLE lotes DROP COLUMN archivado;

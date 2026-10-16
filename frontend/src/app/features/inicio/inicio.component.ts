@@ -53,7 +53,7 @@ import { Lote } from '../lotes/models/lote.model';
             <span class="nota">La configuración se puede cambiar</span>
           </div>
         }
-        <a class="kpi" [class.tono-error]="(estado?.fallidasSinRevisar ?? 0) > 0" [class.tono-exito]="(estado?.fallidasSinRevisar ?? 0) === 0" routerLink="/fallidas">
+        <a class="kpi" [class.tono-fallida]="(estado?.fallidasSinRevisar ?? 0) > 0" [class.tono-exito]="(estado?.fallidasSinRevisar ?? 0) === 0" routerLink="/fallidas">
           <span class="etiqueta"><mat-icon>report</mat-icon> Fallidas por revisar</span>
           <span class="valor">{{ estado?.fallidasSinRevisar ?? '—' }}</span>
           <span class="nota">No vuelven a un lote sin revisión</span>
@@ -94,7 +94,7 @@ import { Lote } from '../lotes/models/lote.model';
                       } @else {
                         <div class="barra" [attr.aria-label]="lote.contadores.completadas + ' de ' + lote.contadores.entran + ' completadas'">
                           <span class="segmento tono-exito" [style.width.%]="porcentaje(lote, lote.contadores.completadas)"></span>
-                          <span class="segmento tono-error" [style.width.%]="porcentaje(lote, lote.contadores.fallidas)"></span>
+                          <span class="segmento tono-fallida" [style.width.%]="porcentaje(lote, lote.contadores.fallidas)"></span>
                           <span class="segmento tono-aviso" [style.width.%]="porcentaje(lote, lote.contadores.excluidasAlEjecutar)"></span>
                         </div>
                         <span class="secundario">{{ lote.contadores.completadas }} de {{ lote.contadores.entran }} completadas
@@ -117,7 +117,7 @@ import { Lote } from '../lotes/models/lote.model';
     .avance { min-width: 200px; }
     .barra { display: flex; height: 6px; border-radius: 3px; overflow: hidden; background: var(--mat-sys-surface-container-high); margin-bottom: 6px; }
     .segmento { background: var(--color-tono); }
-    .falla { color: var(--color-error); font-weight: 500; }
+    .falla { color: var(--color-fallida); font-weight: 500; }
   `,
 })
 export class InicioComponent {

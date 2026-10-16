@@ -6,10 +6,18 @@ import java.util.Map;
  * Lo que GenieACS tiene de una ONU: su ID en GenieACS, el último Inform y el X_HW_SERVICELIST de cada conexión WAN
  * (ruta completa del parámetro → valor). Puede estar viejo: GenieACS solo lo actualiza cuando lo pide.
  */
-public record EstadoServicioWan(String idDispositivo, long ultimoInformMs, Map<String, String> servicios) {
+public record EstadoServicioWan(String idDispositivo, long ultimoInformMs, Map<String, String> servicios, String reportaPorInternet) {
 
+    /**
+     * @param reportaPorInternet la IP de internet por la que se reporta a GenieACS (su TR-069 ya va por la WAN de internet),
+     *                           o null si se reporta por la de gestión o no se sabe
+     */
     public EstadoServicioWan {
         servicios = Map.copyOf(servicios);
+    }
+
+    public EstadoServicioWan(String idDispositivo, long ultimoInformMs, Map<String, String> servicios) {
+        this(idDispositivo, ultimoInformMs, servicios, null);
     }
 
     /** La conexión del internet del cliente (INTERNET o ya TR069_INTERNET). */

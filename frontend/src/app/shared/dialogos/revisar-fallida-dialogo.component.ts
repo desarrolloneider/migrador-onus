@@ -21,7 +21,7 @@ export interface DatosRevision {
     <mat-dialog-content>
       <p class="sn">ONU <strong class="mono">{{ datos.sn }}</strong></p>
       @if (datos.mensaje) {
-        <p class="aviso aviso-error">{{ datos.mensaje }}</p>
+        <p class="aviso aviso-fallida">{{ datos.mensaje }}</p>
       }
       <mat-form-field class="ancho-completo">
         <mat-label>Qué revisaste o qué hiciste en la OLT</mat-label>

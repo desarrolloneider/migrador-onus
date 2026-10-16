@@ -256,6 +256,21 @@ public class LotesUseCase implements BuildBatchPort, ControlBatchPort, QueryBatc
     }
 
     @Override
+    public List<LoteDetalle> recientes(int limite, boolean conArchivados) {
+        return lotes.recientes(limite, conArchivados);
+    }
+
+    @Override
+    public int archivarTerminados(Long usuarioId, String ipOrigen) {
+        List<String> numeros = lotes.archivarTerminados(reloj.instant());
+        auditoria.record(AuditEntry.builder(usuarioId == null ? ActorType.CONSOLA : ActorType.USUARIO, AuditAction.LOTES_ARCHIVADOS)
+                .usuarioId(usuarioId).ipOrigen(ipOrigen).sistema("lotes").peticion(Map.of("cantidad", numeros.size()))
+                .resultado("OK").mensaje(numeros.isEmpty() ? "No había lotes para archivar."
+                        : numeros.size() + " lote(s) archivados (no se borró nada): " + String.join(", ", numeros)).build());
+        return numeros.size();
+    }
+
+    @Override
     public List<ClassifiedOnu> vistaPrevia(long loteId) {
         return lotes.items(loteId);
     }

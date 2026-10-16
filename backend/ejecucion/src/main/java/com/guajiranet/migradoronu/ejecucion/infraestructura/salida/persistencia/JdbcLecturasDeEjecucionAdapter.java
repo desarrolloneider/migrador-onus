@@ -58,6 +58,16 @@ public class JdbcLecturasDeEjecucionAdapter implements LecturasDeEjecucionPort {
                 .update() == 1;
     }
 
+    @Override
+    public int marcarTodasRevisadas(long usuarioId, String nota, Instant ahora) {
+        return jdbc.sql("""
+                        UPDATE ejecuciones_onu SET revisada = TRUE, revisada_por = ?, revisada_en = ?, nota_revision = ?
+                        WHERE estado = 'FALLIDA' AND NOT revisada AND resuelta_en_lote_id IS NULL
+                        """)
+                .params(usuarioId, Timestamp.from(ahora), nota)
+                .update();
+    }
+
     private static EjecucionVista fila(ResultSet rs, int n) throws SQLException {
         long revisadaPor = rs.getLong("revisada_por");
         Long porQuien = rs.wasNull() ? null : revisadaPor;

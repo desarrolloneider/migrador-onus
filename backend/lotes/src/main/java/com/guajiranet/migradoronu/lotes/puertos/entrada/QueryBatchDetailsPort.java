@@ -13,6 +13,11 @@ public interface QueryBatchDetailsPort {
 
     List<LoteDetalle> recientes(int limite);
 
+    /** Con {@code conArchivados}, también los lotes archivados. */
+    default List<LoteDetalle> recientes(int limite, boolean conArchivados) {
+        return recientes(limite);
+    }
+
     List<ClassifiedOnu> vistaPrevia(long loteId);
 
     /** Si no se puede ejecutar real, por qué (DEC-34: sin decidir PC-36 solo se simula). Vacío si se puede. */

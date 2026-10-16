@@ -107,13 +107,13 @@ interface Contador {
           </div>
           <div class="barra-segmentada" role="img" [attr.aria-label]="terminadas() + ' de ' + l.contadores.entran + ' ONUs trabajadas'">
             <span class="seg tono-exito" [style.width.%]="porcentaje(l.contadores.completadas)" title="Completadas"></span>
-            <span class="seg tono-error" [style.width.%]="porcentaje(l.contadores.fallidas)" title="Fallidas"></span>
+            <span class="seg tono-fallida" [style.width.%]="porcentaje(l.contadores.fallidas)" title="Fallidas"></span>
             <span class="seg tono-aviso" [style.width.%]="porcentaje(l.contadores.excluidasAlEjecutar + l.contadores.noIniciadas)" title="Excluidas o no iniciadas"></span>
             <span class="seg tono-progreso en-curso" [style.width.%]="porcentaje(l.contadores.enCurso)" title="En curso"></span>
           </div>
           <div class="leyenda">
             <span><i class="punto tono-exito"></i> Completadas {{ l.contadores.completadas }}</span>
-            <span><i class="punto tono-error"></i> Fallidas {{ l.contadores.fallidas }}</span>
+            <span><i class="punto tono-fallida"></i> Fallidas {{ l.contadores.fallidas }}</span>
             <span><i class="punto tono-aviso"></i> Excluidas {{ l.contadores.excluidasAlEjecutar + l.contadores.noIniciadas }}</span>
             <span><i class="punto tono-progreso"></i> En curso {{ l.contadores.enCurso }}</span>
             <span><i class="punto tono-neutro"></i> Pendientes {{ l.contadores.pendientes }}</span>
@@ -266,14 +266,14 @@ interface Contador {
     .pasos-vivos li.actual { background: var(--fondo-progreso); color: var(--color-progreso); font-weight: 600; }
     .resumen-final { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 16px;
       border-color: color-mix(in srgb, var(--color-exito) 50%, transparent); }
-    .resumen-final.con-fallas { border-color: color-mix(in srgb, var(--color-error) 50%, transparent); }
+    .resumen-final.con-fallas { border-color: color-mix(in srgb, var(--color-fallida) 50%, transparent); }
     .icono-final { font-size: 44px; width: 44px; height: 44px; color: var(--color-exito); }
-    .con-fallas .icono-final { color: var(--color-error); }
+    .con-fallas .icono-final { color: var(--color-fallida); }
     .resumen-texto { flex: 1; min-width: 220px; }
     .resumen-texto h2 { margin: 0 0 4px; }
     .resumen-texto p { margin: 0; color: var(--mat-sys-on-surface-variant); }
     .resumen-texto .ok { color: var(--color-exito); }
-    .resumen-texto .ko { color: var(--color-error); }
+    .resumen-texto .ko { color: var(--color-fallida); }
     .resumen-acciones { display: flex; gap: 8px; flex-wrap: wrap; }
     .reintento { margin-top: 8px; }
     .aviso-real { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
@@ -281,7 +281,7 @@ interface Contador {
     .progreso { display: flex; align-items: center; gap: 12px; margin: 0 0 16px; font-size: 13px; color: var(--mat-sys-on-surface-variant); }
     .progreso mat-progress-bar { flex: 1; }
     .controles { margin-bottom: 12px; overflow-x: auto; }
-    .texto-falla { color: var(--color-error); }
+    .texto-falla { color: var(--color-fallida); }
   `,
 })
 export class EjecucionLoteComponent implements OnInit {
@@ -369,7 +369,7 @@ export class EjecucionLoteComponent implements OnInit {
       { etiqueta: 'Pendientes', icono: 'hourglass_empty', tono: 'neutro', valor: c.pendientes },
       { etiqueta: 'En curso', icono: 'autorenew', tono: 'progreso', valor: c.enCurso },
       { etiqueta: 'Completadas', icono: 'check_circle', tono: 'exito', valor: c.completadas },
-      { etiqueta: 'Fallidas', icono: 'cancel', tono: 'error', valor: c.fallidas },
+      { etiqueta: 'Fallidas', icono: 'error_outline', tono: 'fallida', valor: c.fallidas },
       { etiqueta: 'Excluidas al ejecutar', icono: 'remove_circle', tono: 'aviso', valor: c.excluidasAlEjecutar },
       { etiqueta: 'No iniciadas', icono: 'do_not_disturb_on', tono: 'neutro', valor: c.noIniciadas },
     ];
