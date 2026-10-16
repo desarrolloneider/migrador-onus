@@ -8,6 +8,18 @@ class SesionConsolaOltTest {
 
     private static final String COMANDO = "ont tr069-server-config 0 22 profile-id 3";
 
+    /** Solo se confirma el reinicio de una ONU; a cualquier otra pregunta (y/n) de la OLT se contesta que no. */
+    @Test
+    void soloSeConfirmaElReinicioDeUnaOnu() {
+        assertThat(SesionConsolaOlt.esReinicio("ont reset 1 13")).isTrue();
+        assertThat(SesionConsolaOlt.esReinicio(" ont reset 0 12 ")).isTrue();
+        assertThat(SesionConsolaOlt.esReinicio(COMANDO)).isFalse();
+        assertThat(SesionConsolaOlt.esReinicio("ont reset 1 all")).isFalse();
+        assertThat(SesionConsolaOlt.esReinicio("reboot")).isFalse();
+        assertThat(SesionConsolaOlt.esReinicio("ont delete 1 13")).isFalse();
+        assertThat(SesionConsolaOlt.esReinicio(null)).isFalse();
+    }
+
     @Test
     void elRetrocesoBorraYElRetornoVuelveAlInicioDeLaLinea() {
         assertThat(SesionConsolaOlt.limpiar("abc\b\bXY")).isEqualTo("aXY");

@@ -58,8 +58,8 @@ const MARCAS_CONOCIDAS = ['Huawei', 'ZTE', 'TP-Link', 'FiberHome', 'Optictimes',
       <div class="disposicion">
         <form class="tarjeta" [formGroup]="formulario" (ngSubmit)="armar()">
           <h2><mat-icon>tune</mat-icon> Qué hacer</h2>
-          <p class="intro-pasos">El procedimiento para que las ONUs queden administradas desde GenieACS tiene <strong>3 pasos, en orden</strong>.
-            Cada ONU pasa por los tres. Al terminar un lote, en su resumen aparece el botón para seguir con el paso siguiente usando las mismas ONUs.</p>
+          <p class="intro-pasos">Cada ONU hace los <strong>3 pasos seguidos</strong> (VLAN 46, GUAJIRANET1 y servicio WAN) antes de que empiece la
+            siguiente de su OLT. Las distintas OLT van al mismo tiempo.</p>
           <div class="tipos" role="radiogroup" aria-label="Qué paso hacer">
             @for (t of tipos; track t.valor) {
               <button type="button" class="tipo" role="radio" [attr.aria-checked]="tipo() === t.valor" [class.activo]="tipo() === t.valor"
@@ -131,8 +131,8 @@ const MARCAS_CONOCIDAS = ['Huawei', 'ZTE', 'TP-Link', 'FiberHome', 'Optictimes',
 
         <aside class="tarjeta guia">
           <div class="cadena-pasos" aria-hidden="true">
-            @for (t of tipos; track t.valor; let i = $index; let ultimo = $last) {
-              <span class="eslabon" [class.actual]="tipo() === t.valor">{{ i + 1 }}</span>
+            @for (n of [1, 2, 3]; track n; let ultimo = $last) {
+              <span class="eslabon actual">{{ n }}</span>
               @if (!ultimo) { <span class="union"></span> }
             }
           </div>
@@ -393,7 +393,7 @@ const MARCAS_CONOCIDAS = ['Huawei', 'ZTE', 'TP-Link', 'FiberHome', 'Optictimes',
     .avance li mat-icon { font-size: 18px; width: 18px; height: 18px; color: var(--color-exito); }
     .avance li.actual { color: var(--mat-sys-on-surface); font-weight: 500; }
     .avance li.actual mat-icon { color: var(--color-progreso); }
-    .tipos { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+    .tipos { display: grid; grid-template-columns: 1fr; gap: 10px; }
     @media (max-width: 900px) { .tipos { grid-template-columns: 1fr; } }
     @media (max-width: 600px) { .tipos { grid-template-columns: 1fr; } }
     .tipo { display: flex; gap: 10px; align-items: flex-start; text-align: left; padding: 12px; border-radius: 14px; cursor: pointer;
@@ -468,7 +468,7 @@ export class NuevoLoteComponent {
   protected readonly Math = Math;
   /** La VLAN de gestión del procedimiento del NOC (SmartOLT: IP de gestión por DHCP en la VLAN 46). */
   protected readonly vlanGestion = 46;
-  protected readonly filtroGestion = signal<'TODAS' | 'CON' | 'SIN'>('SIN');
+  protected readonly filtroGestion = signal<'TODAS' | 'CON' | 'SIN'>('TODAS');
   protected readonly filtrosGestion = [
     { valor: 'TODAS' as const, nombre: 'VLAN 46: todas', icono: 'settings_ethernet' },
     { valor: 'SIN' as const, nombre: 'Sin VLAN 46', icono: 'remove_circle_outline' },
@@ -479,15 +479,13 @@ export class NuevoLoteComponent {
     return !!o.modoGestion && o.modoGestion.toLowerCase() !== 'inactive' && o.vlanGestion === this.vlanGestion;
   }
 
+  // Solo "Los 3 pasos" (pedido del 16 de octubre): los pasos sueltos dejaban varias ONUs de una OLT con la VLAN 46 a la
+  // vez y el DHCP les repetía la IP. Los lotes viejos de pasos sueltos se siguen viendo y reintentando en su resumen.
   protected readonly tipos = [
-    { valor: 'VLAN_GESTION' as TipoLote, nombre: '1 · Gestión VLAN 46', icono: 'settings_ethernet',
-      descripcion: 'IP de gestión DHCP en la VLAN 46 en SmartOLT. Va primero: SmartOLT le deja su perfil "SmartOLT".' },
-    { valor: 'PERFIL_TR069' as TipoLote, nombre: '2 · Perfil TR-069', icono: 'router',
-      descripcion: 'Pone GUAJIRANET1 en la OLT (por consola), también encima del perfil "SmartOLT", para que llegue a GenieACS.' },
-    { valor: 'SERVICIO_WAN' as TipoLote, nombre: '3 · Servicio WAN', icono: 'swap_horiz',
-      descripcion: 'GenieACS: INTERNET → TR069_INTERNET y TR069 → OTHER; luego quita la VLAN 46 y vuelve a poner GUAJIRANET1.' },
+    { valor: 'TRES_PASOS' as TipoLote, nombre: '1 → 2 → 3 · Los 3 pasos', icono: 'double_arrow',
+      descripcion: 'VLAN 46, GUAJIRANET1 y servicio WAN seguidos con cada ONU antes de la siguiente de su OLT: nunca hay dos con la VLAN 46 a la vez.' },
   ];
-  protected readonly tipo = signal<TipoLote>('VLAN_GESTION');
+  protected readonly tipo = signal<TipoLote>('TRES_PASOS');
 
   /** La explicación del paso escogido, en palabras sencillas, para quien no conoce el procedimiento. */
   private readonly explicaciones: Record<TipoLote, { titulo: string; icono: string; para: string; hace: string[]; entran: string; despues: string }> = {
@@ -513,6 +511,15 @@ export class NuevoLoteComponent {
         'Verifica en GenieACS (puede tardar unos minutos).', 'Quita la VLAN 46 en SmartOLT.', 'Vuelve a ponerle GUAJIRANET1 en la OLT (SmartOLT se lo quita).'],
       entran: 'Las ONUs en línea que tienen la VLAN 46 (pasos 1 y 2 hechos). Si una no responde a GenieACS, no se toca y queda para reintentar.',
       despues: 'Listo: la ONU queda administrada desde GenieACS por la IP de servicio, sin VLAN 46 y con GUAJIRANET1.',
+    },
+    TRES_PASOS: {
+      titulo: 'Los 3 pasos seguidos', icono: 'double_arrow',
+      para: 'Hace el procedimiento completo con cada ONU, una por OLT a la vez: así el DHCP de la VLAN 46 no le da la misma IP a dos ONUs.',
+      hace: ['Paso 1: VLAN 46 y TR-069 en SmartOLT (y la etiqueta en GenieACS para que el cambio se haga solo).',
+        'Paso 2: GUAJIRANET1 en la OLT.', 'Paso 3: verifica en GenieACS y en la OLT el servicio WAN, quita la VLAN 46 y deja GUAJIRANET1.',
+        'Recién entonces sigue con la siguiente ONU de esa OLT (las demás OLT van en paralelo).'],
+      entran: 'Las ONUs Huawei en línea que no han terminado los 3 pasos, tengan o no la VLAN 46.',
+      despues: 'Cada ONU tarda entre 1 y 6 minutos. Si un paso falla, la ONU queda sin VLAN 46 ni TR-069 y con GUAJIRANET1.',
     },
   };
   protected readonly explicacion = computed(() => this.explicaciones[this.tipo()]);
@@ -554,6 +561,7 @@ export class NuevoLoteComponent {
     switch (this.tipo()) {
       case 'VLAN_GESTION': return { pendientes: 'en línea sin VLAN 46 (por hacer)', listas: 'ya con VLAN 46' };
       case 'SERVICIO_WAN': return { pendientes: 'en línea con VLAN 46 (listas para el paso 3)', listas: 'sin VLAN 46 (falta el paso 1)' };
+      case 'TRES_PASOS': return { pendientes: 'en línea sin terminar (por hacer)', listas: 'con los 3 pasos listos' };
       default: return { pendientes: 'en línea sin ' + this.perfilDestino + ' (por hacer)', listas: 'ya en ' + this.perfilDestino };
     }
   });
@@ -684,6 +692,10 @@ export class NuevoLoteComponent {
     // tiene que quedar con GUAJIRANET1 para que GenieACS la administre (por ejemplo, el cambio de contraseña).
     if (o.tresPasosListos) {
       return this.tipo() === 'PERFIL_TR069' && o.perfil?.toUpperCase() !== this.perfilDestino.toUpperCase();
+    }
+    if (this.tipo() === 'TRES_PASOS') {
+      // Los 3 pasos: todas las que no los han terminado, tengan o no la VLAN 46.
+      return true;
     }
     if (this.tipo() === 'SERVICIO_WAN') {
       // Servicio WAN (va al final): las que ya tienen la VLAN 46, que es por donde GenieACS les entrega el cambio.

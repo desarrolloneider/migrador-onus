@@ -24,6 +24,13 @@ public record ClassifyOnusCommand(String marca, String oltCodigo, String tarjeta
         return SERVICIO_WAN.equals(tipo);
     }
 
+    /** Lote "Los 3 pasos": VLAN 46, GUAJIRANET1 y servicio WAN seguidos con cada ONU. */
+    public static final String TRES_PASOS = "TRES_PASOS";
+
+    public boolean esTresPasos() {
+        return TRES_PASOS.equals(tipo);
+    }
+
     /** Las ONUs sin perfil TR-069, cuando se escogen como origen. */
     public static final String SIN_PERFIL = "SIN_PERFIL";
 

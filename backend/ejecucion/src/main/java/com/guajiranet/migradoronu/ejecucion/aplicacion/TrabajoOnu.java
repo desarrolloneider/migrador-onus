@@ -14,4 +14,9 @@ public record TrabajoOnu(long ejecucionId, long loteId, String loteNumero, boole
     public boolean esServicioWan() {
         return "SERVICIO_WAN".equals(tipo);
     }
+
+    /** Los 3 pasos seguidos (VLAN 46, GUAJIRANET1 y servicio WAN) antes de la siguiente ONU de la OLT. */
+    public boolean esTresPasos() {
+        return "TRES_PASOS".equals(tipo);
+    }
 }

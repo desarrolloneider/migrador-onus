@@ -92,3 +92,9 @@ ALTER TABLE lotes ADD CONSTRAINT ck_lotes_tipo CHECK (tipo IN ('PERFIL_TR069', '
 ALTER TABLE lotes DROP CONSTRAINT ck_lotes_tipo;
 ALTER TABLE lotes ADD CONSTRAINT ck_lotes_tipo CHECK (tipo IN ('PERFIL_TR069', 'VLAN_GESTION', 'SERVICIO_WAN'));
 --rollback ALTER TABLE lotes DROP CONSTRAINT ck_lotes_tipo; ALTER TABLE lotes ADD CONSTRAINT ck_lotes_tipo CHECK (tipo IN ('PERFIL_TR069', 'VLAN_GESTION'));
+
+--changeset migrador:lotes-013-tipo-tres-pasos
+--comment: Lote "Los 3 pasos": cada ONU hace VLAN 46, GUAJIRANET1 y servicio WAN seguidos antes de la siguiente de su OLT, para que nunca haya dos con la VLAN 46 a la vez (el DHCP de OLT_FONSECA repartía la misma IP, 16 de octubre).
+ALTER TABLE lotes DROP CONSTRAINT ck_lotes_tipo;
+ALTER TABLE lotes ADD CONSTRAINT ck_lotes_tipo CHECK (tipo IN ('PERFIL_TR069', 'VLAN_GESTION', 'SERVICIO_WAN', 'TRES_PASOS'));
+--rollback ALTER TABLE lotes DROP CONSTRAINT ck_lotes_tipo; ALTER TABLE lotes ADD CONSTRAINT ck_lotes_tipo CHECK (tipo IN ('PERFIL_TR069', 'VLAN_GESTION', 'SERVICIO_WAN'));

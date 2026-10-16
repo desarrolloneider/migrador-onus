@@ -208,8 +208,19 @@ public class CambioDeServicioWanUnaOnu {
         boolean sinEtiqueta = genie.etiquetar(antes.idDispositivo(), ETIQUETA, false);
         r.paso("P08", "GenieACS: quitar etiqueta " + ETIQUETA, sinEtiqueta ? "OK" : "no se pudo", true,
                 sinEtiqueta ? "Etiqueta quitada." : "No se pudo quitar la etiqueta en GenieACS (no afecta: el preset ya no la cambia).");
+        String reinicio = "";
+        if (reiniciarAlTerminar) {
+            // Sin reiniciar, la ONU tarda ~10 minutos en volver a reportarse por internet (la sesión del cambio se cuelga);
+            // reiniciada, se reporta en 1 o 2 minutos (decisión del 16 de octubre).
+            String sinReiniciar = reiniciarEnOlt(t, consola, candado);
+            r.paso("P08", "OLT: interface gpon " + t.tarjeta().replace(" ", "") + " / ont reset " + t.pon() + " " + t.onuId(),
+                    sinReiniciar == null ? "OK" : sinReiniciar, sinReiniciar == null, sinReiniciar == null
+                            ? "ONU reiniciada desde la OLT: vuelve en 1 o 2 minutos y se reporta a GenieACS por internet."
+                            : "La OLT no reinició la ONU (" + sinReiniciar + "). El cambio ya quedó hecho: GenieACS se pone al día solo en unos 10 minutos.");
+            reinicio = sinReiniciar == null ? " Se reinició desde la OLT." : " No se pudo reiniciar desde la OLT; GenieACS se pone al día solo.";
+        }
         return r.fin(true, Final.COMPLETADA, "P08", null, "Listo: " + posicion + (yaListo ? " ya tenía TR069_INTERNET/OTHER" : " pasó a TR069_INTERNET/OTHER")
-                + ", sin VLAN 46 y con " + t.perfilDestino() + ". Se reporta a GenieACS por la IP de servicio.");
+                + ", sin VLAN 46 y con " + t.perfilDestino() + ". Se reporta a GenieACS por la IP de servicio." + reinicio);
     }
 
     /**
@@ -236,12 +247,55 @@ public class CambioDeServicioWanUnaOnu {
         }
     }
 
+    /**
+     * Lote "Los 3 pasos": si falla el paso 1 o el 2, la ONU no se deja a medias: sin VLAN 46 ni TR-069 en SmartOLT y con
+     * el perfil destino en la OLT. Devuelve el resultado fallido con lo que pasó al limpiarla.
+     */
+    public Resultado fallarYDejarLimpia(TrabajoOnu t, Contexto ctx, Supplier<OltConsolePort> consola, Object candado, String paso,
+                                        String codigo, String mensaje) {
+        return fallarYLimpiar(new Registro(t, ctx), t, !t.simulacion(), ctx, consola, candado, false, paso, codigo, mensaje);
+    }
+
     /** Pide a GenieACS que la despierte (connection request): en esa sesión el preset aplica el cambio. */
     private boolean despertar(String id, List<String> rutas) {
         try {
             return genie.refrescar(id, rutas);
         } catch (RuntimeException e) {
             return false;
+        }
+    }
+
+    /** Si al terminar bien el paso 3 se reinicia la ONU desde la OLT (parámetro reiniciar_al_terminar). */
+    private volatile boolean reiniciarAlTerminar = true;
+
+    public void reiniciarAlTerminar(boolean reiniciar) {
+        this.reiniciarAlTerminar = reiniciar;
+    }
+
+    /**
+     * Reinicia la ONU desde la OLT ({@code ont reset}, por OMCI: no depende de SmartOLT ni del TR-069; el reboot de SmartOLT
+     * respondía sin reiniciar). Devuelve null si la OLT lo aceptó, o lo que respondió.
+     */
+    private String reiniciarEnOlt(TrabajoOnu t, Supplier<OltConsolePort> consola, Object candado) {
+        String tarjeta = t.tarjeta().replace(" ", "");
+        synchronized (candado) {
+            try {
+                OltConsolePort c = consola.get();
+                if (c.prompt().contains("-if-")) {
+                    c.ejecutar("quit");
+                }
+                c.ejecutar("enable");
+                c.ejecutar("config");
+                String entrar = c.ejecutar("interface gpon " + tarjeta);
+                if (!c.prompt().contains("gpon-" + tarjeta)) {
+                    return "no entró a la tarjeta " + tarjeta + ": " + entrar.strip();
+                }
+                String respuesta = c.ejecutar("ont reset " + t.pon() + " " + t.onuId());
+                c.ejecutar("quit");
+                return com.guajiranet.migradoronu.procedimientos.dominio.RespuestaHuawei.esError(respuesta) ? respuesta.strip() : null;
+            } catch (RuntimeException e) {
+                return String.valueOf(e.getMessage());
+            }
         }
     }
 

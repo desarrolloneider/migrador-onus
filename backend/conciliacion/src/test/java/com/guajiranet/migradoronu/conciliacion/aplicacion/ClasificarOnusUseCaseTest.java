@@ -296,6 +296,22 @@ class ClasificarOnusUseCaseTest {
     }
 
     @Test
+    void losTresPasosIncluyenLasQueYaTienenLaVlanYDejanFueraLasTerminadas() {
+        com.guajiranet.migradoronu.conciliacion.dominio.GestionOnu conVlan =
+                new com.guajiranet.migradoronu.conciliacion.dominio.GestionOnu("DHCP", 46, List.of(), true);
+        onus.add(new OnuCandidate("48575443AAAA0004", "Huawei", "EG8041V5", new OnuPosition("MA5683T", "0/0", 1, 4), true, null, null, null));
+        onus.add(new OnuCandidate("48575443AAAA0005", "Huawei", "EG8041V5", new OnuPosition("MA5683T", "0/0", 1, 5), true, null, null, conVlan));
+        onus.add(new OnuCandidate("48575443AAAA0006", "Huawei", "EG8041V5", new OnuPosition("MA5683T", "0/0", 1, 6), true, null, null, null));
+        servicioTerminado.put("48575443AAAA0006", "LOT-2026-000149");
+        Map<String, Classification> r = new HashMap<>();
+        clasificar.classify(new ClassifyOnusCommand("Huawei", null, null, null, null, null, ClassifyOnusCommand.TRES_PASOS))
+                .forEach(c -> r.put(c.onu().rawSn(), c));
+        assertThat(r.get("48575443AAAA0004").group()).isEqualTo(ClassificationGroup.ENTRA);
+        assertThat(r.get("48575443AAAA0005").group()).isEqualTo(ClassificationGroup.ENTRA);
+        assertThat(r.get("48575443AAAA0006").message()).contains("ya terminó los 3 pasos");
+    }
+
+    @Test
     void elPasoUnoDejaFueraLasQueGenieAcsYaTieneListas() {
         onus.add(new OnuCandidate("48575443AAAA0003", "Huawei", "EG8041V5", new OnuPosition("MA5683T", "0/0", 1, 3), true, null, null, null));
         clasificar.conAcs(new com.guajiranet.migradoronu.conciliacion.puertos.salida.UltimoReporteAcsPort() {

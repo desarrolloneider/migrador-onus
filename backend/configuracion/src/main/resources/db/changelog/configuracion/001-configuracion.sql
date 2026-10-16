@@ -92,3 +92,10 @@ UPDATE olts SET tarjetas_permitidas = '["0/0"]'::jsonb, actualizado_en = now() W
 UPDATE olts SET tarjetas_permitidas = '["0/1", "0/2", "0/3", "0/4", "0/5"]'::jsonb, actualizado_en = now() WHERE codigo = 'OLT_FONSECA';
 UPDATE olts SET tarjetas_permitidas = '["0/0", "0/1", "0/2", "0/3", "0/4", "0/5"]'::jsonb, actualizado_en = now() WHERE codigo = 'OLT_SAN_JUAN';
 --rollback UPDATE olts SET tarjetas_permitidas = '[]'::jsonb WHERE codigo IN ('OLT_NEIVA', 'OLT_SAN_JUAN_2', 'OLT_VILLAREINA', 'OLT_SAN_JUAN');
+
+--changeset migrador:configuracion-008-reiniciar-al-terminar
+--comment: Al terminar bien el paso 3 se reinicia la ONU desde la OLT (ont reset), para que se reporte a GenieACS en 1 o 2 minutos en vez de ~10 (pedido del 16 de octubre).
+INSERT INTO parametros (clave, valor, descripcion) VALUES
+    ('reiniciar_al_terminar', '"SI"','Si se reinicia la ONU desde la OLT al terminar bien el paso 3 (SI / NO)')
+ON CONFLICT (clave) DO NOTHING;
+--rollback DELETE FROM parametros WHERE clave = 'reiniciar_al_terminar';

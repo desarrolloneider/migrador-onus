@@ -18,6 +18,12 @@ public final class CatalogoDeParametros {
                     new Opcion("AL_FINAL_DEL_LOTE", "Al terminar el lote"),
                     new Opcion("NO_GUARDAR", "No se guarda (lo hace otra persona)")),
                     "PC-36 · DEC-34", "Si se guarda la configuración de la OLT y cuándo. Sin valor solo se puede simular.", true, true),
+            new DefinicionParametro("reiniciar_al_terminar", "Reiniciar la ONU al terminar el paso 3", "Procedimiento", Tipo.OPCION,
+                    null, null, null, List.of(
+                    new Opcion("SI", "Sí: se reinicia desde la OLT y se reporta a GenieACS en 1 o 2 minutos"),
+                    new Opcion("NO", "No: GenieACS se pone al día solo en unos 10 minutos")),
+                    "16 de octubre", "Solo cuando el paso 3 terminó bien. El cliente queda 1 o 2 minutos sin internet mientras la ONU arranca.",
+                    true, false),
             entero("tamano_maximo_lote", "Tamaño máximo de un lote", "Lotes", "ONUs", 1, 1000, "DEC-32",
                     "Hasta 1000. Una ONU tarda unos 25 s: 1000 ONUs son unas 7 horas.", true),
             entero("vigencia_vista_previa_minutos", "Vigencia de una vista previa", "Lotes", "min", 5, 480, "DEC-32",

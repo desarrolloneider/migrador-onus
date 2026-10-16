@@ -87,6 +87,8 @@ public class ClasificarOnusUseCase implements ClassifyOnusPort {
     /** En un lote de VLAN: las ONUs que ya terminaron el paso 3, con su lote. */
     private final ThreadLocal<Map<String, String>> servicioTerminado = ThreadLocal.withInitial(Map::of);
     private final ThreadLocal<Boolean> loteDeServicio = ThreadLocal.withInitial(() -> false);
+    /** Lote "Los 3 pasos": las que ya tienen la VLAN 46 también entran (les faltan los pasos 2 y 3). */
+    private final ThreadLocal<Boolean> loteTresPasos = ThreadLocal.withInitial(() -> false);
     private final OltProfilesQueryPort perfilesOlt;
     private final Supplier<String> perfilOrigen;
 
@@ -148,10 +150,12 @@ public class ClasificarOnusUseCase implements ClassifyOnusPort {
         }
         origenes.set(command.perfilesOrigen());
         sinLeerOlt.set(command.sns() != null);
-        loteDeVlan.set(command.esVlanGestion());
+        // Los 3 pasos se clasifican como el paso 1 (va primero), pero sin dejar fuera a las que ya tienen la VLAN 46.
+        loteDeVlan.set(command.esVlanGestion() || command.esTresPasos());
+        loteTresPasos.set(command.esTresPasos());
         loteDeServicio.set(command.esServicioWan());
         long t0 = System.nanoTime();
-        servicioTerminado.set(command.esVlanGestion() ? terminadas() : Map.of());
+        servicioTerminado.set(command.esVlanGestion() || command.esTresPasos() ? terminadas() : Map.of());
         long t1 = System.nanoTime();
         try {
             Map<String, List<Subscriber>> contratos = porIp(wispro.listAll());
@@ -166,6 +170,7 @@ public class ClasificarOnusUseCase implements ClassifyOnusPort {
             origenes.remove();
             marcaDelLote.remove();
             loteDeVlan.remove();
+            loteTresPasos.remove();
             loteDeServicio.remove();
             servicioTerminado.remove();
             sinLeerOlt.remove();
@@ -362,7 +367,7 @@ public class ClasificarOnusUseCase implements ClassifyOnusPort {
         }
         com.guajiranet.migradoronu.conciliacion.dominio.GestionOnu g = onu.gestion();
         // Lista solo con la VLAN y el TR-069 activo; con la VLAN y sin TR-069 entra para activarlo.
-        if (g != null && g.gestionActiva() && g.vlanGestion() != null && g.vlanGestion() == vlanGestion && g.tr069()) {
+        if (!loteTresPasos.get() && g != null && g.gestionActiva() && g.vlanGestion() != null && g.vlanGestion() == vlanGestion && g.tr069()) {
             return Classification.alreadyHasProfile(sn, onu, contrato, duplicados);
         }
         if (!onu.enLinea()) {

@@ -96,6 +96,8 @@ public class EjecutorProgramado {
         // Pasos 1 y 3 de a una ONU por OLT (gestion_en_paralelo y servicio_en_paralelo, 1 si no están); varias OLT a la vez.
         ejecutor.servicioEnParalelo(entero("servicio_en_paralelo", 1, 1, 100));
         ejecutor.gestionEnParalelo(entero("gestion_en_paralelo", 1, 1, 50));
+        // Reinicio al terminar el paso 3: encendido si no está el parámetro (decisión del 16 de octubre).
+        ejecutor.reiniciarAlTerminar(!"NO".equalsIgnoreCase(texto("reiniciar_al_terminar")));
         EjecutorDeOnus.SesionOlt sesion = ejecutor.nuevaSesion(olt);
         try {
             while (!deteniendo && ejecutor.ejecutarSiguiente(procesoId, sesion, entero("onus_por_guardado", 1, 1, 50))) {
@@ -110,6 +112,15 @@ public class EjecutorProgramado {
                 LOG.error("Error cerrando la sesión de {}", olt, e);
             }
             trabajando.remove(olt);
+        }
+    }
+
+    private String texto(String clave) {
+        try {
+            Object valor = parametros.currentParameters().valores().get(clave);
+            return valor == null ? null : valor.toString().strip();
+        } catch (RuntimeException e) {
+            return null;
         }
     }
 

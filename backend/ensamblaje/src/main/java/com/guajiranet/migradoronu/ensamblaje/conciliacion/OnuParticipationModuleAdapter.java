@@ -33,7 +33,7 @@ public class OnuParticipationModuleAdapter implements OnuParticipationQueryPort 
         java.util.Map<String, String> r = new java.util.HashMap<>();
         jdbc.sql("""
                 SELECT DISTINCT ON (e.sn) e.sn, l.numero FROM ejecuciones_onu e JOIN lotes l ON l.id = e.lote_id
-                WHERE l.tipo = 'SERVICIO_WAN' AND NOT l.simulacion AND e.estado = 'COMPLETADA'
+                WHERE l.tipo IN ('SERVICIO_WAN', 'TRES_PASOS') AND NOT l.simulacion AND e.estado = 'COMPLETADA'
                 ORDER BY e.sn, e.terminada_en DESC
                 """).query(rs -> {
                     r.put(rs.getString("sn").toUpperCase(java.util.Locale.ROOT), rs.getString("numero"));

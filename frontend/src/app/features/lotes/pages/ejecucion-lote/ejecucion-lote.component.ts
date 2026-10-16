@@ -310,17 +310,11 @@ export class EjecucionLoteComponent implements OnInit {
   protected readonly ejecuciones = signal<EjecucionOnu[]>([]);
   protected readonly siguiendo = signal(false);
 
-  /** El paso que sigue en el procedimiento del NOC (1 VLAN 46 → 2 perfil → 3 servicio WAN). Solo para lotes reales. */
-  protected readonly siguientePaso = computed(() => {
-    const l = this.lote();
-    if (!l || l.simulacion) return null;
-    switch (l.filtros.tipo) {
-      case 'VLAN_GESTION': return { tipo: 'PERFIL_TR069' as const, nombre: '2 · Perfil TR-069', texto: 'Les pone GUAJIRANET1 para que se reporten a GenieACS.' };
-      case 'PERFIL_TR069': return { tipo: 'SERVICIO_WAN' as const, nombre: '3 · Servicio WAN',
-        texto: 'Cambia X_HW_SERVICELIST en GenieACS y quita la VLAN 46. Solo entran las que tienen la VLAN 46 (las demás quedan fuera con su motivo).' };
-      default: return null;
-    }
-  });
+  /**
+   * El paso que sigue en el procedimiento del NOC (1 VLAN 46 → 2 perfil → 3 servicio WAN). Desde el 16 de octubre solo se
+   * arman lotes de "Los 3 pasos": los lotes viejos de pasos sueltos ya no ofrecen seguir con otro paso suelto.
+   */
+  protected readonly siguientePaso = computed((): { tipo: 'PERFIL_TR069' | 'SERVICIO_WAN'; nombre: string; texto: string } | null => null);
 
   /** Las que terminaron bien: completadas, o excluidas sin código porque ya lo tenían. */
   protected readonly listasParaSeguir = computed(() => this.ejecuciones()
@@ -331,6 +325,7 @@ export class EjecucionLoteComponent implements OnInit {
     switch (this.lote()?.filtros.tipo) {
       case 'VLAN_GESTION': return 'con la VLAN 46';
       case 'SERVICIO_WAN': return 'con el servicio WAN listo';
+      case 'TRES_PASOS': return 'con los 3 pasos listos';
       default: return 'cambiadas a GUAJIRANET1';
     }
   }

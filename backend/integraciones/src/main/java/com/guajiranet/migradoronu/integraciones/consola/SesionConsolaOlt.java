@@ -33,8 +33,17 @@ public final class SesionConsolaOlt implements AutoCloseable {
     private static final Pattern PROMPT = Pattern.compile("(?m)^[\\w.\\-]+(\\([\\w\\-/ ]+\\))?[>#]\\s*$");
     private static final Pattern MAS = Pattern.compile("-+\\s*More\\s*\\(.*?\\)\\s*-+");
     private static final Pattern PREGUNTA_OPCIONES = Pattern.compile("\\{\\s*<cr>[^}]*\\}:\\s*$");
-    /** "Are you sure to ...? (y/n)[n]:": siempre se contesta que no (la herramienta no reinicia ONUs ni confirma nada a ciegas). */
+    /**
+     * "Are you sure to ...? (y/n)[n]:": solo se contesta que sí a {@code ont reset} de una ONU (el reinicio al final del paso
+     * 3, decisión del 16 de octubre); a cualquier otra pregunta, que no (nada se confirma a ciegas).
+     */
     private static final Pattern PREGUNTA_SI_NO = Pattern.compile("\\(y/n\\)\\s*\\[[yn]\\]\\s*:\\s*$");
+    /** {@code ont reset <puerto> <ONT>}: una sola ONU, dentro de la tarjeta. */
+    private static final Pattern REINICIO_DE_UNA_ONU = Pattern.compile("^ont reset \\d+ \\d+$");
+
+    static boolean esReinicio(String comando) {
+        return comando != null && REINICIO_DE_UNA_ONU.matcher(comando.strip()).matches();
+    }
     private static final Pattern ANSI = Pattern.compile("\u001B\\[[0-9;?]*[A-Za-z]|\u001B\\[\\d*D|[\b\r]");
 
     /** Tiempo sin datos después del prompt para dar por terminado un comando. */
@@ -191,7 +200,7 @@ public final class SesionConsolaOlt implements AutoCloseable {
                     if (PREGUNTA_SI_NO.matcher(texto).find()) {
                         recibido.reset();
                         recibido.write(PREGUNTA_SI_NO.matcher(texto).replaceAll("").getBytes(StandardCharsets.UTF_8));
-                        enviar("n\n");
+                        enviar(esReinicio(comando) ? "y\n" : "n\n");
                         continue;
                     }
                     if (PREGUNTA_OPCIONES.matcher(texto).find()) {

@@ -86,8 +86,7 @@ public final class PruebaDeConsola {
                 salida.println(">>> " + comando);
                 salida.println(sinDatosDeCliente(consola.ejecutar(comando)));
                 // Solo lectura: la WAN de gestión y la configuración de esa ONU (IP de gestión, TR-069, service-ports).
-                for (String extra : List.of("display ont wan-info " + fsp[0] + "/" + fsp[1] + " " + fsp[2] + " " + ontId,
-                        "display current-configuration ont " + fsp[0] + "/" + fsp[1] + "/" + fsp[2] + " " + ontId)) {
+                for (String extra : List.of("display ont wan-info " + fsp[0] + "/" + fsp[1] + " " + fsp[2] + " " + ontId,                        "display current-configuration ont " + fsp[0] + "/" + fsp[1] + "/" + fsp[2] + " " + ontId)) {
                     salida.println();
                     salida.println(">>> " + extra);
                     salida.println(sinDatosDeCliente(consola.ejecutar(extra)).replaceAll("(?i)desc\s+\"[^\"]*\"", "desc \"(oculta)\""));

@@ -11,6 +11,7 @@ import com.guajiranet.migradoronu.comun.puertos.AuditAction;
 import com.guajiranet.migradoronu.comun.puertos.AuditEntry;
 import com.guajiranet.migradoronu.comun.puertos.AuditTrailPort;
 import com.guajiranet.migradoronu.ejecucion.aplicacion.CambioDePerfilUnaOnu.Contexto;
+import com.guajiranet.migradoronu.ejecucion.aplicacion.CambioDePerfilUnaOnu.Final;
 import com.guajiranet.migradoronu.ejecucion.aplicacion.CambioDePerfilUnaOnu.Objetivo;
 import com.guajiranet.migradoronu.ejecucion.aplicacion.CambioDePerfilUnaOnu.Resultado;
 import com.guajiranet.migradoronu.ejecucion.puertos.salida.ColaDeEjecucionPort;
@@ -45,6 +46,13 @@ public class EjecutorDeOnus {
 
     public void gestionEnParalelo(int n) {
         this.gestionEnParalelo = Math.max(1, n);
+    }
+
+    /** Si al terminar bien el paso 3 se reinicia la ONU desde la OLT. */
+    public void reiniciarAlTerminar(boolean reiniciar) {
+        if (servicio != null) {
+            servicio.reiniciarAlTerminar(reiniciar);
+        }
     }
 
     /** El cambio de servicio WAN (GenieACS); sin él, los lotes de ese tipo fallan con un mensaje claro. */
@@ -150,6 +158,16 @@ public class EjecutorDeOnus {
             return false;
         }
         TrabajoOnu t = tomado.get();
+        if (t.esTresPasos()) {
+            // En el hilo de la OLT: la siguiente ONU de esta OLT no se toma hasta que esta termine los 3 pasos.
+            ejecutarTresPasos(t, s);
+            synchronized (s) {
+                if (s.sinGuardar.size() >= onusPorGuardado) {
+                    guardar(s, t.loteId());
+                }
+            }
+            return true;
+        }
         if (t.esVlanGestion()) {
             ejecutarGestionEnParalelo(t, s);
             return true;
@@ -208,6 +226,61 @@ public class EjecutorDeOnus {
             guardar(s, t.loteId());
         }
         return true;
+    }
+
+    /**
+     * Lote "Los 3 pasos": VLAN 46, GUAJIRANET1 y servicio WAN seguidos con una ONU. Así nunca hay dos ONUs de la misma OLT
+     * con la VLAN 46 a la vez (el DHCP de OLT_FONSECA le daba la misma IP a varias y solo una llegaba a GenieACS, 16 de
+     * octubre). Si falla el paso 1 o el 2, queda sin VLAN 46 ni TR-069 y con el perfil destino.
+     */
+    private void ejecutarTresPasos(TrabajoOnu t, SesionOlt s) {
+        try {
+            if (servicio == null) {
+                throw new IllegalStateException("El ejecutor no tiene configurado GenieACS.");
+            }
+            Contexto ctx = new Contexto(ActorType.PROCESO_EJECUTOR, t.confirmadoPor(), t.loteId(), t.ejecucionId(),
+                    paso -> cola.avanzarPaso(t.ejecucionId(), paso));
+            boolean real = !t.simulacion();
+            prepararServicioWan(t, ctx);
+            Resultado r1 = gestion.ejecutar(t, vlanGestion, real, ctx);
+            if (r1.fin() == Final.EXCLUIDA) {
+                // No se tocó nada (por ejemplo, está fuera de línea).
+                cola.terminar(t.ejecucionId(), "EXCLUIDA_AL_EJECUTAR", r1.paso(), r1.codigoFallo(), "Paso 1 (VLAN 46): " + r1.mensaje());
+                return;
+            }
+            if (r1.fin() == Final.FALLIDA) {
+                terminarLimpia(t, s, ctx, r1, "Paso 1 (VLAN 46)");
+                return;
+            }
+            String[] tarjeta = t.tarjeta().split("/");
+            // El save de la OLT lo hace el paso 3 (que vuelve a poner el perfil), con las demás ONUs.
+            Objetivo objetivo = new Objetivo(t.oltCodigo(), Integer.parseInt(tarjeta[0].strip()), Integer.parseInt(tarjeta[1].strip()),
+                    t.pon(), t.onuId(), t.perfilesOrigen() == null ? List.of(perfilOrigen, "SmartOLT", CambioDePerfilUnaOnu.SIN_PERFIL) : t.perfilesOrigen(),
+                    t.perfilDestino(), false, false, t.sn(), () -> gestion.tieneGestionEn(t.sn(), vlanGestion));
+            Resultado r2;
+            synchronized (s) {
+                r2 = cambio.ejecutar(objetivo, real, ctx, s::compartida);
+                if (r2.fin() == Final.FALLIDA) {
+                    s.descartar();
+                }
+            }
+            if (r2.fin() == Final.FALLIDA || r2.fin() == Final.EXCLUIDA) {
+                terminarLimpia(t, s, ctx, r2, "Paso 2 (" + t.perfilDestino() + ")");
+                return;
+            }
+            // Paso 3: deja el resultado final de la ONU (y la suma al próximo save de la OLT).
+            ejecutarServicio(t, s);
+        } catch (RuntimeException e) {
+            cola.terminar(t.ejecucionId(), "FALLIDA", "P01", "FALLO_SISTEMA_NO_RESPONDE", "El ejecutor no pudo procesar la ONU: " + e.getMessage());
+        }
+    }
+
+    /** Falló el paso 1 o el 2 de "Los 3 pasos": se deja limpia (sin VLAN 46 ni TR-069, con el perfil destino) y fallida. */
+    private void terminarLimpia(TrabajoOnu t, SesionOlt s, Contexto ctx, Resultado r, String nombre) {
+        String codigo = r.codigoFallo() == null ? "FALLO_OLT_RECHAZO" : r.codigoFallo();
+        Resultado limpia = servicio.fallarYDejarLimpia(t, ctx, s::compartida, s, r.paso() == null ? "P03" : r.paso(), codigo,
+                nombre + ": " + r.mensaje());
+        cola.terminar(t.ejecucionId(), "FALLIDA", limpia.paso(), codigo, limpia.mensaje());
     }
 
     /**

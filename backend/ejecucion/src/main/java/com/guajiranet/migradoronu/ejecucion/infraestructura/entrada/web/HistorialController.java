@@ -84,7 +84,7 @@ public class HistorialController {
 
     private static Filtros filtros(String tipo, String sn, String olt, String tarjeta, String resultado, String desde, String hasta, int pagina, int tamano) {
         String paso = limpio(tipo);
-        if (paso != null && !List.of("VLAN_GESTION", "PERFIL_TR069", "SERVICIO_WAN").contains(paso)) {
+        if (paso != null && !List.of("VLAN_GESTION", "PERFIL_TR069", "SERVICIO_WAN", "TRES_PASOS").contains(paso)) {
             throw ErrorDeNegocio.datosInvalidos("Paso inválido: " + paso + ".");
         }
         return new Filtros(paso, limpio(sn), limpio(olt), limpio(tarjeta), limpio(resultado), fecha(desde, false), fecha(hasta, true),
