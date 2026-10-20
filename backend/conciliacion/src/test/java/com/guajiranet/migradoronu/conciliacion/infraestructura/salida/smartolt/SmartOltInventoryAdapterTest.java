@@ -17,6 +17,53 @@ class SmartOltInventoryAdapterTest {
         return JSON.readTree(json);
     }
 
+    /** SmartOLT de mentira: cuenta las descargas del inventario (get_all_onus_details). */
+    private static final class SmartOltFalso extends com.guajiranet.migradoronu.integraciones.smartolt.SmartOltClient {
+        int descargas;
+
+        SmartOltFalso() {
+            super();
+        }
+
+        @Override
+        public java.util.List<JsonNode> olts() {
+            return java.util.List.of(registro("{\"id\":\"8\",\"name\":\"OLT_VILLAREINA\"}"));
+        }
+
+        @Override
+        public java.util.List<JsonNode> onus(Map<String, ?> filtros) {
+            descargas++;
+            return java.util.List.of(registro("""
+                    {"sn":"HWTC1A2B3C4D","olt_id":"8","olt_name":"OLT_VILLAREINA","board":"0","port":"1","onu":"12",
+                     "onu_type_name":"EG8141A5","name":"993 10.7.0.35","status":"Online"}
+                    """));
+        }
+    }
+
+    /** Con la precarga, "Estado de OLT", cada OLT y las vistas previas salen de la misma copia: una sola descarga. */
+    @Test
+    void conLaPrecargaLasPantallasNoGastanOtraDescarga() {
+        SmartOltFalso smartOlt = new SmartOltFalso();
+        SmartOltInventoryAdapter adaptador = new SmartOltInventoryAdapter(() -> smartOlt, java.time.Clock.systemUTC());
+        assertThat(adaptador.refrescarInventario()).isTrue();
+        assertThat(adaptador.listOnus("Huawei", "OLT_VILLAREINA", null, null)).hasSize(1);
+        assertThat(adaptador.listOnus(null, null, null, null)).hasSize(1);
+        assertThat(adaptador.listOnus("Huawei", "OLT_VILLAREINA", "0/0", 1)).hasSize(1);
+        assertThat(smartOlt.descargas).isEqualTo(1);
+    }
+
+    /** Nunca más de 10 descargas por hora (SmartOLT permite 15 y bloquea la IP al pasarse). */
+    @Test
+    void laPrecargaRespetaElCupoPorHora() {
+        SmartOltFalso smartOlt = new SmartOltFalso();
+        SmartOltInventoryAdapter adaptador = new SmartOltInventoryAdapter(() -> smartOlt, java.time.Clock.systemUTC());
+        for (int i = 0; i < 12; i++) {
+            adaptador.refrescarInventario();
+        }
+        assertThat(smartOlt.descargas).isEqualTo(SmartOltInventoryAdapter.MAXIMO_INVENTARIOS_POR_HORA);
+        assertThat(adaptador.refrescarInventario()).isFalse();
+    }
+
     @Test
     void convierteUnRegistroRealDeSmartOlt() {
         var onu = SmartOltInventoryAdapter.convertir(registro("""

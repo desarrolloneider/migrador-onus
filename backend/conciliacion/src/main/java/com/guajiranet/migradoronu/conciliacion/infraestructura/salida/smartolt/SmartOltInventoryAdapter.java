@@ -38,8 +38,12 @@ public class SmartOltInventoryAdapter implements OnuInventoryPort {
     private static final Pattern IPV4 =
             Pattern.compile("(?<![\\d.])(?:(?:25[0-5]|2[0-4]\\d|1?\\d?\\d)\\.){3}(?:25[0-5]|2[0-4]\\d|1?\\d?\\d)(?![\\d.])");
     private static final Duration VIGENCIA_OLTS = Duration.ofMinutes(10);
-    /** Copia del inventario completo. 10 min: cada descarga es una petición pesada a SmartOLT (bloqueó la IP el 15 de octubre). */
-    private static final Duration VIGENCIA_INVENTARIO = Duration.ofMinutes(10);
+    /**
+     * Copia del inventario completo y de cada OLT. La renueva la precarga cada 15 minutos (PrecargaDeSmartOlt); 20 minutos
+     * de vigencia dan margen para que nunca haga falta otra descarga mientras la precarga funcione. Cada descarga es una
+     * petición pesada a SmartOLT (bloqueó la IP el 15 de octubre).
+     */
+    private static final Duration VIGENCIA_INVENTARIO = Duration.ofMinutes(20);
 
     private final Supplier<SmartOltClient> cliente;
     private final Clock reloj;
@@ -124,13 +128,35 @@ public class SmartOltInventoryAdapter implements OnuInventoryPort {
                 return inventario.stream().filter(o -> oltCodigo.equalsIgnoreCase(o.position().oltCodigo())).toList();
             }
             throw new com.guajiranet.migradoronu.integraciones.http.ErrorDeIntegracion(SmartOltClient.SISTEMA,
-                    "Se llegó al máximo de consultas del inventario de SmartOLT de esta hora (SmartOLT permite 15). Intenta en unos minutos.", null);
+                    "Todavía no hay copia del inventario de SmartOLT y se llegó al máximo de descargas de esta hora (SmartOLT permite 15 y bloquea al pasarse). La copia se renueva sola cada 15 minutos: intenta en unos minutos.", null);
         }
         descargas.addLast(ahora);
         List<OnuCandidate> onus = convertir(cliente.get().onus(Map.of("olt_id", oltIdDe(oltCodigo))));
         porOlt.put(clave, onus);
         porOltLeidaEn.put(clave, ahora);
         return onus;
+    }
+
+    /**
+     * Descarga el inventario completo para la copia (la precarga, en su propio hilo). La descarga va fuera del candado:
+     * puede tardar y las pantallas siguen leyendo la copia anterior mientras tanto. false si no quedaba cupo.
+     */
+    public boolean refrescarInventario() {
+        synchronized (this) {
+            if (!hayCupo(reloj.instant())) {
+                return false;
+            }
+            descargas.addLast(reloj.instant());
+        }
+        List<JsonNode> registros = cliente.get().onus(Map.of());
+        synchronized (this) {
+            inventario = convertir(registros);
+            inventarioLeidoEn = reloj.instant();
+            // Las copias por OLT quedan viejas al lado de esta: se sirve todo de la nueva.
+            porOlt.clear();
+            porOltLeidaEn.clear();
+            return true;
+        }
     }
 
     /** ¿Queda cupo de get_all_onus_details en la última hora? */
@@ -151,7 +177,7 @@ public class SmartOltInventoryAdapter implements OnuInventoryPort {
                 return inventario;
             }
             throw new com.guajiranet.migradoronu.integraciones.http.ErrorDeIntegracion(SmartOltClient.SISTEMA,
-                    "Se llegó al máximo de consultas del inventario de SmartOLT de esta hora (SmartOLT permite 15). Intenta en unos minutos.", null);
+                    "Todavía no hay copia del inventario de SmartOLT y se llegó al máximo de descargas de esta hora (SmartOLT permite 15 y bloquea al pasarse). La copia se renueva sola cada 15 minutos: intenta en unos minutos.", null);
         }
         descargas.addLast(ahora);
         inventario = convertir(cliente.get().onus(Map.of()));

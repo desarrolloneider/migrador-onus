@@ -30,6 +30,11 @@ public class SmartOltClient {
         this.http = new ClienteJson(SISTEMA, urlBase, h -> h.set("X-Token", token), tiempoMaximo);
     }
 
+    /** Para dobles de prueba que redefinen los métodos: no abre ninguna conexión. */
+    protected SmartOltClient() {
+        this.http = null;
+    }
+
     /** Las OLT registradas en SmartOLT, con su ID. */
     public List<JsonNode> olts() {
         return registros(http.get("/api/system/get_olts", Map.of()));
