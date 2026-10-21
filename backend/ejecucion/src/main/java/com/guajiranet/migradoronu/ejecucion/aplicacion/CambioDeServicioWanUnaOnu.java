@@ -373,23 +373,21 @@ public class CambioDeServicioWanUnaOnu {
     }
 
     /**
-     * ¿La OLT muestra el cambio hecho? Una WAN con Tr069 e Internet juntos, otra con Other, y ninguna que siga siendo
-     * solo de TR-069.
+     * ¿La OLT muestra el cambio hecho? Una WAN con Tr069 e Internet juntos y otra con Other.
      */
     static boolean listoEnOlt(String wanInfo) {
         boolean tr069Internet = false;
         boolean otra = false;
-        boolean soloTr069 = false;
         Matcher m = TIPO_DE_SERVICIO.matcher(wanInfo);
         while (m.find()) {
             String s = m.group(1).toLowerCase(java.util.Locale.ROOT);
-            boolean tr = s.contains("tr069");
-            boolean internet = s.contains("internet");
-            tr069Internet |= tr && internet;
-            soloTr069 |= tr && !internet;
+            tr069Internet |= s.contains("tr069") && s.contains("internet");
             otra |= s.equals("other");
         }
-        return tr069Internet && otra && !soloTr069;
+        // Una WAN que siga siendo solo de TR-069 no lo impide: mientras la gestión está activa, SmartOLT le crea por OMCI su
+        // propia WAN de TR-069 en la VLAN 46 (OLT_C_..._TR069_R_VID_46), que desaparece al quitar la VLAN. Exigir que no
+        // existiera dejaba como fallidas a ONUs ya cambiadas (53 de 172 etiquetadas, 21 de octubre).
+        return tr069Internet && otra;
     }
 
     /**

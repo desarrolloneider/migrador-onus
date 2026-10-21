@@ -239,6 +239,11 @@ class CambioDeServicioWanUnaOnuTest {
         assertThat(CambioDeServicioWanUnaOnu.listoEnOlt(WAN_CAMBIADA)).isTrue();
         assertThat(CambioDeServicioWanUnaOnu.listoEnOlt(WAN_SIN_CAMBIAR)).isFalse();
         assertThat(CambioDeServicioWanUnaOnu.listoEnOlt("")).isFalse();
+        // Con la gestión activa, SmartOLT agrega su propia WAN de TR-069 (OLT_C_..._TR069_R_VID_46): igual está cambiada.
+        assertThat(CambioDeServicioWanUnaOnu.listoEnOlt(WAN_CAMBIADA + """
+                  Name                       : OLT_C_2_TR069_R_VID_46
+                  Service type               : Tr069
+                """)).isTrue();
         assertThat(CambioDeServicioWanUnaOnu.servicios(WAN_CAMBIADA)).isEqualTo("Tr069, Internet | Other");
         assertThat(CambioDeServicioWanUnaOnu.comandoWan(TRABAJO)).isEqualTo("display ont wan-info 0/5 11 55");
     }
