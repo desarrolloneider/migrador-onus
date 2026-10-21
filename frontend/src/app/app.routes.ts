@@ -77,6 +77,12 @@ export const routes: Routes = [
         loadComponent: () => import('./features/auditoria/pages/auditoria/auditoria.component').then((m) => m.AuditoriaComponent),
       },
       {
+        path: 'vlan-gestion',
+        canActivate: [moduloGuard], data: { administrador: true },
+        title: 'VLAN 46 activa' + SUFIJO,
+        loadComponent: () => import('./features/vlan-gestion/vlan-gestion.component').then((m) => m.VlanGestionComponent),
+      },
+      {
         path: 'usuarios',
         canActivate: [moduloGuard], data: { administrador: true },
         title: 'Gestión de usuarios' + SUFIJO,

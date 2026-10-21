@@ -158,6 +158,10 @@ public class EjecutorDeOnus {
             return false;
         }
         TrabajoOnu t = tomado.get();
+        if (t.esQuitarVlan()) {
+            ejecutarQuitarVlan(t, s);
+            return true;
+        }
         if (t.esTresPasos()) {
             // En el hilo de la OLT: la siguiente ONU de esta OLT no se toma hasta que esta termine los 3 pasos.
             ejecutarTresPasos(t, s);
@@ -291,6 +295,30 @@ public class EjecutorDeOnus {
             ejecutarServicio(t, s);
         } catch (RuntimeException e) {
             cola.terminar(t.ejecucionId(), "FALLIDA", "P01", "FALLO_SISTEMA_NO_RESPONDE", "El ejecutor no pudo procesar la ONU: " + e.getMessage());
+        }
+    }
+
+    /** Lote "Quitar VLAN 46": en el hilo de la OLT, de a una ONU. */
+    private void ejecutarQuitarVlan(TrabajoOnu t, SesionOlt s) {
+        try {
+            if (servicio == null) {
+                throw new IllegalStateException("El ejecutor no tiene configurado GenieACS.");
+            }
+            Contexto ctx = new Contexto(ActorType.PROCESO_EJECUTOR, t.confirmadoPor(), t.loteId(), t.ejecucionId(),
+                    paso -> cola.avanzarPaso(t.ejecucionId(), paso));
+            Resultado r = servicio.quitarVlan(t, ctx, s::compartida, s);
+            switch (r.fin()) {
+                case COMPLETADA, SIMULADA, YA_TENIA -> cola.terminar(t.ejecucionId(), "COMPLETADA", r.paso(), null, r.mensaje());
+                case EXCLUIDA -> cola.terminar(t.ejecucionId(), "EXCLUIDA_AL_EJECUTAR", r.paso(), r.codigoFallo(), r.mensaje());
+                case FALLIDA -> {
+                    cola.terminar(t.ejecucionId(), "FALLIDA", r.paso(), r.codigoFallo(), r.mensaje());
+                    synchronized (s) {
+                        s.descartar();
+                    }
+                }
+            }
+        } catch (RuntimeException e) {
+            cola.terminar(t.ejecucionId(), "FALLIDA", "P07", "FALLO_SISTEMA_NO_RESPONDE", "El ejecutor no pudo procesar la ONU: " + e.getMessage());
         }
     }
 

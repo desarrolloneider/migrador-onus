@@ -104,3 +104,9 @@ ALTER TABLE lotes ADD CONSTRAINT ck_lotes_tipo CHECK (tipo IN ('PERFIL_TR069', '
 ALTER TABLE lotes ADD COLUMN archivado BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE lotes ADD COLUMN archivado_en TIMESTAMPTZ;
 --rollback ALTER TABLE lotes DROP COLUMN archivado_en; ALTER TABLE lotes DROP COLUMN archivado;
+
+--changeset migrador:lotes-015-tipo-quitar-vlan
+--comment: Lote "Quitar VLAN 46" (solo administradores): quita la gestión en SmartOLT y vuelve a poner GUAJIRANET1 en la OLT, para devolver las ONUs con la VLAN 46 activa (IPs de gestión repetidas, 21 de octubre).
+ALTER TABLE lotes DROP CONSTRAINT ck_lotes_tipo;
+ALTER TABLE lotes ADD CONSTRAINT ck_lotes_tipo CHECK (tipo IN ('PERFIL_TR069', 'VLAN_GESTION', 'SERVICIO_WAN', 'TRES_PASOS', 'QUITAR_VLAN'));
+--rollback ALTER TABLE lotes DROP CONSTRAINT ck_lotes_tipo; ALTER TABLE lotes ADD CONSTRAINT ck_lotes_tipo CHECK (tipo IN ('PERFIL_TR069', 'VLAN_GESTION', 'SERVICIO_WAN', 'TRES_PASOS'));

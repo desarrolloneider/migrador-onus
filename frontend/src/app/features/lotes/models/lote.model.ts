@@ -15,7 +15,7 @@ export type ModoLote = 'LOTE' | 'INDIVIDUAL';
 export type GrupoVistaPrevia = 'ENTRA' | 'EXCLUIDA' | 'YA_TIENE_PERFIL';
 
 /** PERFIL_TR069: cambia el perfil en la OLT. VLAN_GESTION: pone la IP de gestión DHCP en la VLAN 46 en SmartOLT. */
-export type TipoLote = 'PERFIL_TR069' | 'VLAN_GESTION' | 'SERVICIO_WAN' | 'TRES_PASOS';
+export type TipoLote = 'PERFIL_TR069' | 'VLAN_GESTION' | 'SERVICIO_WAN' | 'TRES_PASOS' | 'QUITAR_VLAN';
 
 export interface FiltrosLote {
   marca: string;

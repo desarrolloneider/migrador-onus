@@ -64,6 +64,10 @@ interface EnlaceMenu {
               <mat-icon matListItemIcon>manage_accounts</mat-icon>
               <span matListItemTitle>Gestión de usuarios</span>
             </a>
+            <a mat-list-item routerLink="/vlan-gestion" routerLinkActive #vlan="routerLinkActive" [activated]="vlan.isActive">
+              <mat-icon matListItemIcon>settings_ethernet</mat-icon>
+              <span matListItemTitle>VLAN 46 activa</span>
+            </a>
           </mat-nav-list>
         }
       </mat-sidenav>
@@ -98,6 +102,7 @@ interface EnlaceMenu {
             <a mat-menu-item routerLink="/cambiar-clave"><mat-icon>key</mat-icon> Cambiar contraseña</a>
             @if (auth.esAdministrador()) {
               <a mat-menu-item routerLink="/usuarios"><mat-icon>manage_accounts</mat-icon> Gestión de usuarios</a>
+              <a mat-menu-item routerLink="/vlan-gestion"><mat-icon>settings_ethernet</mat-icon> VLAN 46 activa</a>
             }
             <button mat-menu-item (click)="cerrarSesion()"><mat-icon>logout</mat-icon> Cerrar sesión</button>
           </mat-menu>

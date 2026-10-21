@@ -31,6 +31,13 @@ public record ClassifyOnusCommand(String marca, String oltCodigo, String tarjeta
         return TRES_PASOS.equals(tipo);
     }
 
+    /** Lote "Quitar VLAN 46": entran las que tienen la VLAN 46 activa, como en el paso 3. */
+    public static final String QUITAR_VLAN = "QUITAR_VLAN";
+
+    public boolean esQuitarVlan() {
+        return QUITAR_VLAN.equals(tipo);
+    }
+
     /** Las ONUs sin perfil TR-069, cuando se escogen como origen. */
     public static final String SIN_PERFIL = "SIN_PERFIL";
 

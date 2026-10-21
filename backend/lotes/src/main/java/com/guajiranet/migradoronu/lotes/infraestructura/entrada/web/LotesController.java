@@ -109,6 +109,23 @@ public class LotesController {
     public VistaPreviaDto armar(@RequestBody ArmarLoteRequest cuerpo, @AuthenticationPrincipal UsuarioAutenticado usuario) {
         BatchFilters filtros = new BatchFilters(texto(cuerpo.marca()), texto(cuerpo.olt()), texto(cuerpo.tarjeta()), cuerpo.pon(),
                 cuerpo.perfiles(), cuerpo.sns(), cuerpo.tipo());
+        if (BatchFilters.QUITAR_VLAN.equals(filtros.tipo())) {
+            throw ErrorDeNegocio.datosInvalidos("El lote \"Quitar VLAN 46\" se arma desde la pantalla de administración \"VLAN 46 activa\".");
+        }
+        BatchView lote = armar.buildPreview(new BuildBatchCommand(usuario.id(), filtros));
+        return vistaPrevia(lote.id());
+    }
+
+    public record QuitarVlanRequest(String olt, List<String> sns) {
+    }
+
+    /** Solo administradores (ReglasDePermiso): lote "Quitar VLAN 46" con las ONUs escogidas. */
+    @PostMapping("/remove-vlan-preview")
+    public VistaPreviaDto armarQuitarVlan(@RequestBody QuitarVlanRequest cuerpo, @AuthenticationPrincipal UsuarioAutenticado usuario) {
+        if (cuerpo == null || cuerpo.sns() == null || cuerpo.sns().isEmpty()) {
+            throw ErrorDeNegocio.datosInvalidos("Escoge al menos una ONU.");
+        }
+        BatchFilters filtros = new BatchFilters("TODAS", texto(cuerpo.olt()), null, null, null, cuerpo.sns(), BatchFilters.QUITAR_VLAN);
         BatchView lote = armar.buildPreview(new BuildBatchCommand(usuario.id(), filtros));
         return vistaPrevia(lote.id());
     }

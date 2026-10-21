@@ -282,6 +282,29 @@ public class CambioDeServicioWanUnaOnu {
         return fallarYLimpiar(new Registro(t, ctx), t, !t.simulacion(), ctx, consola, candado, false, paso, codigo, mensaje);
     }
 
+    /**
+     * Lote "Quitar VLAN 46": solo la limpieza (P07 sin VLAN 46 ni TR-069 en SmartOLT, P08 perfil destino en la OLT), sin
+     * tocar el servicio WAN ni reiniciar. Para devolver ONUs que quedaron con la VLAN 46 activa.
+     */
+    public Resultado quitarVlan(TrabajoOnu t, Contexto ctx, Supplier<OltConsolePort> consola, Object candado) {
+        Registro r = new Registro(t, ctx);
+        if (t.simulacion()) {
+            r.paso("SIM", "SmartOLT: IP de gestión Inactiva", "", true, "Simulación: no se mandó.");
+            r.paso("SIM", "OLT: perfil " + t.perfilDestino(), "", true, "Simulación: no se mandó.");
+            return r.fin(false, Final.SIMULADA, "P07", null, "Simulación: se le quitaría la VLAN 46 y quedaría con " + t.perfilDestino() + ".");
+        }
+        String[] error = limpiar(r, t, ctx, consola, candado, false);
+        if (error != null) {
+            return r.fin(true, Final.FALLIDA, error[0], error[1], "No quedó limpia: " + error[2]);
+        }
+        try {
+            genie.leer(t.sn()).ifPresent(e -> genie.etiquetar(e.idDispositivo(), ETIQUETA, false));
+        } catch (RuntimeException ignorada) {
+            // La etiqueta no afecta: el preset no cambia una ONU sin VLAN 46.
+        }
+        return r.fin(true, Final.COMPLETADA, "P08", null, "Sin VLAN 46 ni TR-069 en SmartOLT y con " + t.perfilDestino() + " en la OLT.");
+    }
+
     /** Pide a GenieACS que la despierte (connection request): en esa sesión el preset aplica el cambio. */
     private boolean despertar(String id, List<String> rutas) {
         try {

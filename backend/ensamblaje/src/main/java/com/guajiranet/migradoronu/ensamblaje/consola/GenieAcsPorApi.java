@@ -168,6 +168,48 @@ public class GenieAcsPorApi implements GenieAcsPort, com.guajiranet.migradoronu.
         return listos;
     }
 
+    /**
+     * La IP de gestión (192.168.x) con que se reportó cada ONU y la hora de su último reporte, por SN (formato común).
+     * De a 20 por consulta. Las que GenieACS no tiene no salen.
+     */
+    public Map<String, IpDeGestion> ipsDeGestion(java.util.Collection<String> sns) {
+        Map<String, IpDeGestion> r = new LinkedHashMap<>();
+        List<String> todos = new ArrayList<>(sns);
+        for (int i = 0; i < todos.size(); i += 20) {
+            String filtro = String.join(" OR ", todos.subList(i, Math.min(todos.size(), i + 20)).stream()
+                    .map(sn -> "DeviceID.SerialNumber = \"" + sn + "\"").toList());
+            StringBuilder proyeccion = new StringBuilder("DeviceID.SerialNumber,Events.Inform,InternetGatewayDevice.ManagementServer.ConnectionRequestURL");
+            for (int c = 1; c <= 4; c++) {
+                proyeccion.append(',').append(WAN).append('.').append(c).append(".WANIPConnection.1.ExternalIPAddress");
+            }
+            JsonNode lista = get("/api/devices/?filter=" + URLEncoder.encode(filtro, StandardCharsets.UTF_8).replace("+", "%20")
+                    + "&projection=" + proyeccion);
+            if (lista == null || !lista.isArray()) {
+                continue;
+            }
+            for (JsonNode d : lista) {
+                String sn = valor(d.get("DeviceID.SerialNumber"));
+                String url = valor(d.get("InternetGatewayDevice.ManagementServer.ConnectionRequestURL"));
+                String host = url == null ? null : url.replaceFirst("^[a-z]+://", "").replaceFirst("[:/].*$", "");
+                String ip = host != null && host.startsWith("192.168.") ? host : null;
+                for (int c = 1; c <= 4 && ip == null; c++) {
+                    String externa = valor(d.get(WAN + "." + c + ".WANIPConnection.1.ExternalIPAddress"));
+                    ip = externa != null && externa.startsWith("192.168.") ? externa : null;
+                }
+                String inform = valor(d.get("Events.Inform"));
+                if (sn != null) {
+                    r.put(sn.toUpperCase(java.util.Locale.ROOT), new IpDeGestion(ip,
+                            inform == null ? null : java.time.Instant.ofEpochMilli(Long.parseLong(inform))));
+                }
+            }
+        }
+        return r;
+    }
+
+    /** IP de gestión (null si no tiene) y último reporte a GenieACS. */
+    public record IpDeGestion(String ip, java.time.Instant ultimoReporte) {
+    }
+
     @Override
     public boolean refrescar(String idDispositivo, List<String> parametros) {
         List<Object> tarea = List.of(Map.of("name", "getParameterValues", "parameterNames", parametros));

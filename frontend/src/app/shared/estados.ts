@@ -73,6 +73,7 @@ const PASOS_POR_TIPO: Record<string, Partial<Record<CodigoPaso, string>>> = {
   SERVICIO_WAN: { P03: 'Leer en GenieACS', P05: 'Cambiar X_HW_SERVICELIST', P06: 'Verificar en GenieACS', P07: 'Quitar VLAN 46',
     P08: 'Volver a poner GUAJIRANET1' },
   // Los 3 pasos seguidos repiten los códigos (cada paso tiene su lectura, cambio y verificación): nombres generales.
+  QUITAR_VLAN: { P07: 'Quitar VLAN 46', P08: 'Volver a poner GUAJIRANET1' },
   TRES_PASOS: { P03: 'Leer el estado', P04: 'Entrar a la tarjeta', P05: 'Aplicar el cambio', P06: 'Verificar', P07: 'VLAN 46 / guardar',
     P08: 'Volver a poner GUAJIRANET1' },
 };
@@ -88,7 +89,7 @@ export const INDIVIDUAL: Presentacion = { etiqueta: 'Individual', icono: 'person
 /** Describe los filtros de un lote: "RIOHACHA01 · tarjeta 0/1 · PON 2". */
 export function describirFiltros(filtros: { olt: string | null; tarjeta: string | null; pon: number | null; tipo?: string }): string {
   const tipo = filtros.tipo === 'VLAN_GESTION' ? 'Gestión VLAN 46 · ' : filtros.tipo === 'SERVICIO_WAN' ? 'Servicio WAN · '
-    : filtros.tipo === 'TRES_PASOS' ? 'Los 3 pasos · ' : '';
+    : filtros.tipo === 'TRES_PASOS' ? 'Los 3 pasos · ' : filtros.tipo === 'QUITAR_VLAN' ? 'Quitar VLAN 46 · ' : '';
   if (!filtros.olt) {
     return tipo + 'Todas las OLT';
   }

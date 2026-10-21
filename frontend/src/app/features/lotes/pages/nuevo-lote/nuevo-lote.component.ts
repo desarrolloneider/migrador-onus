@@ -512,6 +512,13 @@ export class NuevoLoteComponent {
       entran: 'Las ONUs en línea que tienen la VLAN 46 (pasos 1 y 2 hechos). Si una no responde a GenieACS, no se toca y queda para reintentar.',
       despues: 'Listo: la ONU queda administrada desde GenieACS por la IP de servicio, sin VLAN 46 y con GUAJIRANET1.',
     },
+    QUITAR_VLAN: {
+      titulo: 'Quitar VLAN 46', icono: 'undo',
+      para: 'Devuelve ONUs que quedaron con la VLAN 46 activa. Se arma desde Administración > VLAN 46 activa.',
+      hace: ['Quita la VLAN 46 y el TR-069 en SmartOLT.', 'Vuelve a poner GUAJIRANET1 en la OLT.'],
+      entran: 'Las ONUs en línea con la VLAN 46 activa.',
+      despues: 'Quedan sin VLAN 46 y con GUAJIRANET1, sin reiniciarlas.',
+    },
     TRES_PASOS: {
       titulo: 'Los 3 pasos seguidos', icono: 'double_arrow',
       para: 'Hace el procedimiento completo con cada ONU, una por OLT a la vez: así el DHCP de la VLAN 46 no le da la misma IP a dos ONUs.',

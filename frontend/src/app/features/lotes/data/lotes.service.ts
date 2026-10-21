@@ -31,6 +31,11 @@ export class LotesService {
     return this.http.get<Lote>(`${this.baseUrl}/${id}`);
   }
 
+  /** Solo administradores: lote "Quitar VLAN 46" con las ONUs escogidas (una OLT). */
+  armarQuitarVlan(olt: string, sns: string[]): Observable<VistaPrevia> {
+    return this.http.post<VistaPrevia>(`${this.baseUrl}/remove-vlan-preview`, { olt, sns });
+  }
+
   armarVistaPrevia(request: ArmarLoteRequest): Observable<VistaPrevia> {
     return this.http.post<VistaPrevia>(`${this.baseUrl}/preview`, request);
   }

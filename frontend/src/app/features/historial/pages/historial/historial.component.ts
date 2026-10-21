@@ -148,6 +148,7 @@ export class HistorialComponent implements OnInit {
     { valor: 'PERFIL_TR069', nombre: '2 · Perfil GUAJIRANET1', icono: 'router' },
     { valor: 'SERVICIO_WAN', nombre: '3 · Servicio WAN', icono: 'swap_horiz' },
     { valor: 'TRES_PASOS', nombre: '1 → 2 → 3 · Los 3 pasos', icono: 'double_arrow' },
+    { valor: 'QUITAR_VLAN', nombre: 'Quitar VLAN 46', icono: 'undo' },
   ];
 
   protected nombreDePaso(tipo: string | null | undefined): string {

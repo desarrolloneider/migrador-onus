@@ -153,7 +153,7 @@ public class ClasificarOnusUseCase implements ClassifyOnusPort {
         // Los 3 pasos se clasifican como el paso 1 (va primero), pero sin dejar fuera a las que ya tienen la VLAN 46.
         loteDeVlan.set(command.esVlanGestion() || command.esTresPasos());
         loteTresPasos.set(command.esTresPasos());
-        loteDeServicio.set(command.esServicioWan());
+        loteDeServicio.set(command.esServicioWan() || command.esQuitarVlan());
         long t0 = System.nanoTime();
         servicioTerminado.set(command.esVlanGestion() || command.esTresPasos() ? terminadas() : Map.of());
         long t1 = System.nanoTime();

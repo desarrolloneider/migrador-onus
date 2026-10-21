@@ -19,4 +19,9 @@ public record TrabajoOnu(long ejecucionId, long loteId, String loteNumero, boole
     public boolean esTresPasos() {
         return "TRES_PASOS".equals(tipo);
     }
+
+    /** Quitar la VLAN 46 en SmartOLT y volver a poner el perfil TR-069. */
+    public boolean esQuitarVlan() {
+        return "QUITAR_VLAN".equals(tipo);
+    }
 }

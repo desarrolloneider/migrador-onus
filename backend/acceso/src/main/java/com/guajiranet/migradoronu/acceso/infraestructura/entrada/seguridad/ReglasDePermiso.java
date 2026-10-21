@@ -27,6 +27,10 @@ final class ReglasDePermiso {
         if (ruta.startsWith("/api/v1/users")) {
             return Optional.of(new Exigencia(null, true, "gestionar usuarios"));
         }
+        // Devolver ONUs con la VLAN 46 activa: solo administradores.
+        if (ruta.startsWith("/api/v1/vlan-gestion") || ruta.startsWith("/api/v1/batches/remove-vlan-preview")) {
+            return Optional.of(new Exigencia(null, true, "quitar la VLAN 46"));
+        }
         if (ruta.startsWith("/api/v1/batches")) {
             if (!lectura && (ruta.endsWith("/confirm") || ruta.endsWith("/stop") || ruta.endsWith("/repeat-real")
                     || ruta.endsWith("/retry-failed"))) {
