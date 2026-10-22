@@ -93,9 +93,10 @@ public class JdbcBatchRepositoryAdapter implements BatchRepositoryPort {
     }
 
     @Override
-    public List<LoteDetalle> recientes(int limite, boolean conArchivados) {
-        return jdbc.sql(LOTE + (conArchivados ? "" : " WHERE NOT l.archivado") + " ORDER BY l.creado_en DESC LIMIT ?")
-                .param(Math.max(1, Math.min(limite, 200)))
+    public List<LoteDetalle> recientes(int limite, boolean conArchivados, Long creadoPor) {
+        String donde = " WHERE (? OR NOT l.archivado) AND (CAST(? AS BIGINT) IS NULL OR l.creado_por = ?)";
+        return jdbc.sql(LOTE + donde + " ORDER BY l.creado_en DESC LIMIT ?")
+                .params(conArchivados, creadoPor, creadoPor, Math.max(1, Math.min(limite, 200)))
                 .query(JdbcBatchRepositoryAdapter::lote).list();
     }
 

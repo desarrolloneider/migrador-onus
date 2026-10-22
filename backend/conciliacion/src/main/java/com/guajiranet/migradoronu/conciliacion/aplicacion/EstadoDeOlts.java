@@ -39,11 +39,11 @@ public class EstadoDeOlts {
      */
     public record Olt(String codigo, long total, long enLinea, long fueraDeLinea, long sinContrato, long sinContratoEnLinea,
                       boolean accesoConsola, Map<String, Long> perfiles, Long conPerfilDestino, Long pendientes,
-                      List<Tarjeta> tarjetas, List<Marca> marcas, long conVlanGestion, long conVlanGestionEnLinea) {
+                      List<Tarjeta> tarjetas, List<Marca> marcas, long conVlanGestion, long conVlanGestionEnLinea, Long migradas) {
     }
 
     public record Totales(long olts, long total, long enLinea, long fueraDeLinea, long sinContrato, long conPerfilDestino,
-                          long pendientes, long conVlanGestion) {
+                          long pendientes, long conVlanGestion, Long migradas) {
     }
 
     public record Estado(Instant leidoEn, String perfilDestino, int vlanGestion, Totales totales, List<Marca> marcas, List<Olt> olts) {
@@ -56,6 +56,13 @@ public class EstadoDeOlts {
     private final Supplier<String> perfilDestino;
     private final Clock reloj;
     private final int vlanGestion;
+    /** Las ONUs que GenieACS ya muestra con TR069_INTERNET (servicio WAN migrado), por SN en formato común. */
+    private java.util.function.Supplier<java.util.Set<String>> migradas = () -> null;
+
+    public EstadoDeOlts conMigradas(java.util.function.Supplier<java.util.Set<String>> migradas) {
+        this.migradas = Objects.requireNonNull(migradas, "migradas");
+        return this;
+    }
 
     public EstadoDeOlts(OnuInventoryPort smartOlt, SubscriberDirectoryPort wispro, OltSettingsQueryPort olts,
                         OltProfilesQueryPort perfilesOlt, Supplier<String> perfilDestino, Clock reloj, int vlanGestion) {
@@ -76,6 +83,13 @@ public class EstadoDeOlts {
         Map<String, List<OnuCandidate>> porOlt = todas.stream()
                 .collect(Collectors.groupingBy(o -> o.position().oltCodigo(), TreeMap::new, Collectors.toList()));
         String destino = perfilDestino.get();
+        java.util.Set<String> listas;
+        try {
+            listas = migradas.get();
+        } catch (RuntimeException e) {
+            listas = null;
+        }
+        java.util.Set<String> yaMigradas = listas;
 
         // Los perfiles se leen en las OLT con consola, todas a la vez (cada lectura tiene su caché de 2 minutos).
         Map<String, CompletableFuture<Optional<Map<String, String>>>> lecturas = new LinkedHashMap<>();
@@ -118,8 +132,12 @@ public class EstadoDeOlts {
             List<Marca> marcas = porMarca(onus);
             long conVlan = onus.stream().filter(this::tieneGestion).count();
             long conVlanEnLinea = onus.stream().filter(o -> o.enLinea() && tieneGestion(o)).count();
+            Long migradasOlt = yaMigradas == null ? null : onus.stream().filter(o -> yaMigradas.contains(
+                    com.guajiranet.migradoronu.conciliacion.dominio.FormatoSn.normalizar(o.rawSn()).orElse(o.rawSn().toUpperCase(java.util.Locale.ROOT))))
+                    .count();
             resultado.add(new Olt(codigo, onus.size(), enLinea, onus.size() - enLinea, sinContrato, sinContratoEnLinea,
-                    olts.consoleAccessConfigured(codigo), porPerfil, conDestino, pendientes, tarjetas, marcas, conVlan, conVlanEnLinea));
+                    olts.consoleAccessConfigured(codigo), porPerfil, conDestino, pendientes, tarjetas, marcas, conVlan, conVlanEnLinea,
+                    migradasOlt));
         });
         resultado.sort(Comparator.comparingLong(Olt::total).reversed());
 
@@ -130,7 +148,8 @@ public class EstadoDeOlts {
                 resultado.stream().mapToLong(Olt::sinContrato).sum(),
                 resultado.stream().map(Olt::conPerfilDestino).filter(Objects::nonNull).mapToLong(Long::longValue).sum(),
                 resultado.stream().map(Olt::pendientes).filter(Objects::nonNull).mapToLong(Long::longValue).sum(),
-                resultado.stream().mapToLong(Olt::conVlanGestion).sum());
+                resultado.stream().mapToLong(Olt::conVlanGestion).sum(),
+                yaMigradas == null ? null : resultado.stream().map(Olt::migradas).filter(Objects::nonNull).mapToLong(Long::longValue).sum());
         return new Estado(reloj.instant(), destino, vlanGestion, totales, porMarca(todas), resultado);
     }
 

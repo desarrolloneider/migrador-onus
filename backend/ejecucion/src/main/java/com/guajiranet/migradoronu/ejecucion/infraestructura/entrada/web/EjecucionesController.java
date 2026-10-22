@@ -104,8 +104,8 @@ public class EjecucionesController {
     }
 
     @GetMapping("/onu-runs/failed")
-    public List<EjecucionDto> fallidas() {
-        return consultas.fallidasSinRevisar().stream().map(EjecucionesController::dto).toList();
+    public List<EjecucionDto> fallidas(@AuthenticationPrincipal UsuarioAutenticado usuario, HttpServletRequest request) {
+        return consultas.fallidasSinRevisar(propias(usuario, request)).stream().map(EjecucionesController::dto).toList();
     }
 
     @GetMapping("/onu-runs/{id}")
@@ -117,7 +117,13 @@ public class EjecucionesController {
     @PostMapping("/onu-runs/failed/review-all")
     public Map<String, Integer> revisarTodas(@RequestBody(required = false) RevisarRequest cuerpo, @AuthenticationPrincipal UsuarioAutenticado usuario,
                                              HttpServletRequest request) {
-        return Map.of("revisadas", consultas.revisarTodas(usuario.id(), cuerpo == null ? null : cuerpo.nota(), request.getRemoteAddr()));
+        return Map.of("revisadas", consultas.revisarTodas(usuario.id(), cuerpo == null ? null : cuerpo.nota(), request.getRemoteAddr(),
+                propias(usuario, request)));
+    }
+
+    /** Cada usuario ve y revisa solo lo de sus lotes; el administrador, todo (null). */
+    private static Long propias(UsuarioAutenticado usuario, HttpServletRequest request) {
+        return UsuarioAutenticado.esAdministrador(request.getAttribute(UsuarioAutenticado.ATRIBUTO_ADMINISTRADOR)) ? null : usuario.id();
     }
 
     @PostMapping("/onu-runs/{id}/review")

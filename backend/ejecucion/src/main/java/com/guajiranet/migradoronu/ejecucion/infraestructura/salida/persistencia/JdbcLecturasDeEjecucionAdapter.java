@@ -59,6 +59,25 @@ public class JdbcLecturasDeEjecucionAdapter implements LecturasDeEjecucionPort {
     }
 
     @Override
+    public List<EjecucionVista> fallidasSinRevisar(Long creadoPor) {
+        return jdbc.sql(COLUMNAS + " WHERE e.estado = 'FALLIDA' AND NOT e.revisada AND e.resuelta_en_lote_id IS NULL"
+                        + " AND (CAST(? AS BIGINT) IS NULL OR l.creado_por = ?) ORDER BY e.terminada_en DESC")
+                .params(creadoPor, creadoPor).query(JdbcLecturasDeEjecucionAdapter::fila).list();
+    }
+
+    @Override
+    public int marcarTodasRevisadas(long usuarioId, String nota, Instant ahora, Long creadoPor) {
+        return jdbc.sql("""
+                        UPDATE ejecuciones_onu e SET revisada = TRUE, revisada_por = ?, revisada_en = ?, nota_revision = ?
+                        FROM lotes l
+                        WHERE l.id = e.lote_id AND e.estado = 'FALLIDA' AND NOT e.revisada AND e.resuelta_en_lote_id IS NULL
+                          AND (CAST(? AS BIGINT) IS NULL OR l.creado_por = ?)
+                        """)
+                .params(usuarioId, Timestamp.from(ahora), nota, creadoPor, creadoPor)
+                .update();
+    }
+
+    @Override
     public int marcarTodasRevisadas(long usuarioId, String nota, Instant ahora) {
         return jdbc.sql("""
                         UPDATE ejecuciones_onu SET revisada = TRUE, revisada_por = ?, revisada_en = ?, nota_revision = ?

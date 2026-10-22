@@ -62,6 +62,11 @@ public class ConsultarEjecucionesUseCase {
         return lecturas.fallidasSinRevisar();
     }
 
+    /** Las fallidas sin revisar de los lotes de ese usuario (null: de todos, para el administrador). */
+    public List<EjecucionVista> fallidasSinRevisar(Long creadoPor) {
+        return lecturas.fallidasSinRevisar(creadoPor);
+    }
+
     public Optional<Detalle> detalle(long ejecucionId) {
         return lecturas.porId(ejecucionId).map(e -> {
             List<EventoDeEjecucion> eventos = lineaDeTiempo.deEjecucion(e.id(), e.loteId(), e.sn());
@@ -86,11 +91,16 @@ public class ConsultarEjecucionesUseCase {
 
     /** "Marcar todas como revisadas" en la pantalla Fallidas: una sola nota para todas. Devuelve cuántas se marcaron. */
     public int revisarTodas(long usuarioId, String nota, String ipOrigen) {
+        return revisarTodas(usuarioId, nota, ipOrigen, null);
+    }
+
+    /** Con {@code creadoPor}, solo las de los lotes de ese usuario. */
+    public int revisarTodas(long usuarioId, String nota, String ipOrigen, Long creadoPor) {
         String texto = nota == null || nota.isBlank() ? "Marcadas como revisadas todas a la vez desde la pantalla Fallidas." : nota.strip();
         if (texto.length() < 10) {
             throw ErrorDeNegocio.datosInvalidos("La nota de revisión debe tener al menos 10 caracteres.");
         }
-        int marcadas = lecturas.marcarTodasRevisadas(usuarioId, texto, reloj.instant());
+        int marcadas = lecturas.marcarTodasRevisadas(usuarioId, texto, reloj.instant(), creadoPor);
         auditoria.record(AuditEntry.builder(ActorType.USUARIO, AuditAction.ONU_REVISADA).usuarioId(usuarioId).ipOrigen(ipOrigen)
                 .peticion(Map.of("nota", texto, "todas", true)).resultado("OK")
                 .mensaje(marcadas + " fallida(s) marcadas como revisadas a la vez: " + texto).build());

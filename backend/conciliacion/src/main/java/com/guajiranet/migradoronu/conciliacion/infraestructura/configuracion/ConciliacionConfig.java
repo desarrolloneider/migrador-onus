@@ -55,9 +55,13 @@ public class ConciliacionConfig {
     @Bean
     com.guajiranet.migradoronu.conciliacion.aplicacion.EstadoDeOlts estadoDeOlts(SmartOltInventoryAdapter smartOlt,
             WisproDirectoryAdapter wisproDirectorio, OltSettingsQueryPort olts, OltProfilesQueryPort perfilesOlt,
-            TargetProfilePort perfil, Clock reloj, @Value("${MIGRADOR_VLAN_GESTION:46}") int vlanGestion) {
-        return new com.guajiranet.migradoronu.conciliacion.aplicacion.EstadoDeOlts(smartOlt, wisproDirectorio, olts, perfilesOlt,
+            TargetProfilePort perfil, Clock reloj, @Value("${MIGRADOR_VLAN_GESTION:46}") int vlanGestion,
+            org.springframework.beans.factory.ObjectProvider<com.guajiranet.migradoronu.conciliacion.puertos.salida.UltimoReporteAcsPort> acs) {
+        var estado = new com.guajiranet.migradoronu.conciliacion.aplicacion.EstadoDeOlts(smartOlt, wisproDirectorio, olts, perfilesOlt,
                 perfil::perfilDestino, reloj, vlanGestion);
+        // Las migradas salen de GenieACS (TR069_INTERNET), con su copia de 2 minutos.
+        acs.ifAvailable(a -> estado.conMigradas(a::conServicioWanListo));
+        return estado;
     }
 
     @Bean

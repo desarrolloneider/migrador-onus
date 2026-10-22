@@ -18,10 +18,12 @@ interface EstadoOlt {
   codigo: string; total: number; enLinea: number; fueraDeLinea: number; sinContrato: number; sinContratoEnLinea: number;
   accesoConsola: boolean; perfiles: Record<string, number> | null; conPerfilDestino: number | null; pendientes: number | null;
   tarjetas: Tarjeta[]; marcas: Marca[]; conVlanGestion: number; conVlanGestionEnLinea: number;
+  /** Con TR069_INTERNET/OTHER según GenieACS; null si GenieACS no respondió. */
+  migradas: number | null;
 }
 interface EstadoGeneral {
   leidoEn: string; perfilDestino: string; vlanGestion: number;
-  totales: { olts: number; total: number; enLinea: number; fueraDeLinea: number; sinContrato: number; conPerfilDestino: number; pendientes: number; conVlanGestion: number };
+  totales: { olts: number; total: number; enLinea: number; fueraDeLinea: number; sinContrato: number; conPerfilDestino: number; pendientes: number; conVlanGestion: number; migradas: number | null };
   marcas: Marca[];
   olts: EstadoOlt[];
 }
@@ -66,6 +68,9 @@ const REFRESCO_MS = 300_000;
           <div class="total destino"><span class="icono"><mat-icon>task_alt</mat-icon></span><div><strong>{{ n(e.totales.conPerfilDestino) }}</strong><span>ya en {{ e.perfilDestino }}</span></div></div>
           <div class="total pendiente"><span class="icono"><mat-icon>pending_actions</mat-icon></span><div><strong>{{ n(e.totales.pendientes) }}</strong><span>por cambiar y en línea</span></div></div>
           <div class="total vlan" matTooltip="IP de gestión por DHCP en la VLAN de gestión, según SmartOLT"><span class="icono"><mat-icon>settings_ethernet</mat-icon></span><div><strong>{{ n(e.totales.conVlanGestion) }}</strong><span>con VLAN {{ e.vlanGestion }} de gestión</span></div></div>
+          @if (e.totales.migradas !== null) {
+            <div class="total migradas" matTooltip="Según GenieACS: servicio WAN con TR069_INTERNET y OTHER (los 3 pasos hechos)"><span class="icono"><mat-icon>swap_horiz</mat-icon></span><div><strong>{{ n(e.totales.migradas) }}</strong><span>migradas (TR069_INTERNET/OTHER)</span></div></div>
+          }
         </section>
 
         <section class="por-marca">
@@ -161,6 +166,13 @@ const REFRESCO_MS = 300_000;
                 <span class="pista"><span class="relleno vlan-relleno" [style.width.%]="porcentaje(o.conVlanGestion, o.total)"></span></span>
                 <span class="cuenta"><strong>{{ n(o.conVlanGestion) }}</strong> / {{ n(o.total) }}</span>
               </div>
+              @if (o.migradas !== null) {
+                <div class="vlan-olt" matTooltip="Según GenieACS: con TR069_INTERNET y OTHER (los 3 pasos hechos)">
+                  <span class="vlan-titulo"><mat-icon>swap_horiz</mat-icon> Migradas</span>
+                  <span class="pista"><span class="relleno migradas-relleno" [style.width.%]="porcentaje(o.migradas, o.total)"></span></span>
+                  <span class="cuenta"><strong>{{ n(o.migradas) }}</strong> / {{ n(o.total) }}</span>
+                </div>
+              }
 
               <details class="detalle">
                 <summary><mat-icon>expand_more</mat-icon> Por tarjeta y por marca (en línea / total)</summary>
@@ -194,6 +206,7 @@ const REFRESCO_MS = 300_000;
     </div>
   `,
   styles: `
+    .migradas-relleno { background: var(--color-exito); }
     .encabezado h1 mat-icon { color: var(--mat-sys-primary); }
     .refresco { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
     .vivo { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--color-exito); }

@@ -54,8 +54,11 @@ final class UsuarioActivoFilter extends OncePerRequestFilter {
         // aplica de inmediato sin cerrar la sesión.
         if (autenticacion != null && autenticacion.getPrincipal() instanceof UsuarioAutenticado usuario) {
             String ruta = request.getRequestURI();
+            var permisos = usuarios.permisos(usuario.id());
+            // Los lotes de cada usuario son suyos: solo el administrador ve los de todos (lo usan lotes y ejecución).
+            request.setAttribute(UsuarioAutenticado.ATRIBUTO_ADMINISTRADOR, permisos.administrador());
             var exigencia = ReglasDePermiso.para(request.getMethod(), ruta);
-            if (exigencia.isPresent() && !exigencia.get().cumple(usuarios.permisos(usuario.id()))) {
+            if (exigencia.isPresent() && !exigencia.get().cumple(permisos)) {
                 RespuestasDeSeguridad.escribir(response, 403, "Sin permiso",
                         "No tienes permiso para " + exigencia.get().descripcion() + ". Pídeselo a un administrador.");
                 return;

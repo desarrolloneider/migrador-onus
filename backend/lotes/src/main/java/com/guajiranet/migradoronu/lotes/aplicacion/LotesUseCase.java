@@ -261,6 +261,11 @@ public class LotesUseCase implements BuildBatchPort, ControlBatchPort, QueryBatc
     }
 
     @Override
+    public List<LoteDetalle> recientes(int limite, boolean conArchivados, Long creadoPor) {
+        return lotes.recientes(limite, conArchivados, creadoPor);
+    }
+
+    @Override
     public int archivarTerminados(Long usuarioId, String ipOrigen) {
         List<String> numeros = lotes.archivarTerminados(reloj.instant());
         auditoria.record(AuditEntry.builder(usuarioId == null ? ActorType.CONSOLA : ActorType.USUARIO, AuditAction.LOTES_ARCHIVADOS)

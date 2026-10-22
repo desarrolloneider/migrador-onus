@@ -86,8 +86,11 @@ public class LotesController {
     }
 
     @GetMapping
-    public List<LoteDto> recientes(@RequestParam(defaultValue = "20") int limit, @RequestParam(defaultValue = "false") boolean archivados) {
-        List<LoteDetalle> lotes = consultas.recientes(limit, archivados);
+    public List<LoteDto> recientes(@RequestParam(defaultValue = "20") int limit, @RequestParam(defaultValue = "false") boolean archivados,
+                                   @AuthenticationPrincipal UsuarioAutenticado usuario, jakarta.servlet.http.HttpServletRequest request) {
+        // Cada usuario ve solo los lotes que armó; el administrador, todos.
+        boolean admin = UsuarioAutenticado.esAdministrador(request.getAttribute(UsuarioAutenticado.ATRIBUTO_ADMINISTRADOR));
+        List<LoteDetalle> lotes = consultas.recientes(limit, archivados, admin ? null : usuario.id());
         Map<Long, String> quien = nombresDe(lotes);
         return lotes.stream().map(l -> dto(l, quien)).toList();
     }

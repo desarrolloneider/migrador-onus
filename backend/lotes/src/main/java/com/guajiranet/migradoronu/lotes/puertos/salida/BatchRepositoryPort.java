@@ -27,11 +27,15 @@ public interface BatchRepositoryPort {
 
     Optional<LoteDetalle> detalle(long loteId);
 
-    /** Los últimos lotes; los archivados solo si {@code conArchivados}. */
-    List<LoteDetalle> recientes(int limite, boolean conArchivados);
+    /** Los últimos lotes; los archivados solo si {@code conArchivados}; con {@code creadoPor}, solo los de ese usuario. */
+    List<LoteDetalle> recientes(int limite, boolean conArchivados, Long creadoPor);
+
+    default List<LoteDetalle> recientes(int limite, boolean conArchivados) {
+        return recientes(limite, conArchivados, null);
+    }
 
     default List<LoteDetalle> recientes(int limite) {
-        return recientes(limite, false);
+        return recientes(limite, false, null);
     }
 
     /** Archiva los lotes que ya no se mueven (terminados, detenidos, descartados, vistas previas vencidas). Devuelve sus números. */

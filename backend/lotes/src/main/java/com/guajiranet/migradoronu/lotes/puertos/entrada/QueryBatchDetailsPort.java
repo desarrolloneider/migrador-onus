@@ -18,6 +18,11 @@ public interface QueryBatchDetailsPort {
         return recientes(limite);
     }
 
+    /** Con {@code creadoPor}, solo los lotes que armó ese usuario (los no administradores solo ven los suyos). */
+    default List<LoteDetalle> recientes(int limite, boolean conArchivados, Long creadoPor) {
+        return recientes(limite, conArchivados).stream().filter(l -> creadoPor == null || l.creadoPor() == creadoPor).toList();
+    }
+
     List<ClassifiedOnu> vistaPrevia(long loteId);
 
     /** Si no se puede ejecutar real, por qué (DEC-34: sin decidir PC-36 solo se simula). Vacío si se puede. */
