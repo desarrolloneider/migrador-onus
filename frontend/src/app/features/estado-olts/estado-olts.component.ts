@@ -13,7 +13,7 @@ import { environment } from '../../../environments/environment';
 import { mensajeDeError } from '../../core/api/errores';
 
 interface Tarjeta { tarjeta: string; total: number; enLinea: number; }
-interface Marca { marca: string; total: number; enLinea: number; }
+interface Marca { marca: string; total: number; enLinea: number; migradas: number | null; }
 interface EstadoOlt {
   codigo: string; total: number; enLinea: number; fueraDeLinea: number; sinContrato: number; sinContratoEnLinea: number;
   accesoConsola: boolean; perfiles: Record<string, number> | null; conPerfilDestino: number | null; pendientes: number | null;
@@ -85,6 +85,12 @@ const REFRESCO_MS = 300_000;
                     <span class="relleno" [style.width.%]="porcentaje(m.enLinea, m.total)"></span>
                   </div>
                   <div class="marca-cifras"><strong>{{ n(m.enLinea) }}</strong> en línea <span>de {{ n(m.total) }} · {{ pct(m.enLinea, m.total) }}</span></div>
+                  @if (m.migradas !== null) {
+                    <div class="marca-migradas" [matTooltip]="'Con TR069_INTERNET/OTHER según GenieACS. Faltan ' + n(m.total - m.migradas)">
+                      <span class="marca-barra"><span class="relleno migradas-relleno" [style.width.%]="porcentaje(m.migradas, m.total)"></span></span>
+                      <span><strong>{{ pct(m.migradas, m.total) }}</strong> migradas · {{ n(m.migradas) }} hechas · {{ n(m.total - m.migradas) }} faltan</span>
+                    </div>
+                  }
                 </div>
               }
             }
@@ -206,6 +212,7 @@ const REFRESCO_MS = 300_000;
     </div>
   `,
   styles: `
+    .marca-migradas { grid-column: 1 / -1; display: grid; grid-template-columns: 120px 1fr; gap: 10px; align-items: center; font-size: 12.5px; color: var(--mat-sys-on-surface-variant); }
     .migradas-relleno { background: var(--color-exito); }
     .encabezado h1 mat-icon { color: var(--mat-sys-primary); }
     .refresco { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }

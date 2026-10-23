@@ -81,6 +81,24 @@ public class CambioDeGestionUnaOnu {
         if (!a.enLinea()) {
             return r.fin(real, Final.EXCLUIDA, "P03", "EXC_FUERA_DE_LINEA", "La ONU está fuera de línea en SmartOLT: no se toca.");
         }
+        // SmartOLT solo acepta cambios con el "External ID" de la ONU; sin él responde "specify a valid ONU external ID"
+        // (OLT_SAN_JUAN_2 1/4, 23 de octubre). No se toca: hay que ponérselo en SmartOLT.
+        if (a.idExterno() == null || a.idExterno().isBlank()) {
+            if (!real) {
+                r.paso("SIM", "SmartOLT: External ID = SN", "", true, "Simulación: no se mandó.");
+            } else {
+                try {
+                    String id = smartOlt.ponerExternalIdIgualAlSn(t.sn());
+                    r.paso("P04", "SmartOLT: External ID = " + id + " (update_unique_external_id_by_sn)", "OK", true,
+                            "La ONU no tenía External ID en SmartOLT: se le puso su SN.");
+                    a = new EstadoGestionOnu(id, a.enLinea(), a.modo(), a.vlan(), a.ip(), a.tr069());
+                } catch (RuntimeException e) {
+                    r.paso("P04", "SmartOLT: External ID = SN", String.valueOf(e.getMessage()), false, "SmartOLT no le puso el External ID.");
+                    return r.fin(real, Final.EXCLUIDA, "P03", "EXC_SIN_EXTERNAL_ID", "La ONU no tiene External ID en SmartOLT y no se le pudo"
+                            + " poner (" + e.getMessage() + "): no se tocó nada más.");
+                }
+            }
+        }
         if (a.tieneDhcpEn(vlan)) {
             // Ya tiene la VLAN pero no el TR-069 (así quedaban antes): solo falta activarlo.
             return conTr069(r, a, real, posicion, vlan);

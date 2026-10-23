@@ -30,7 +30,8 @@ public class EstadoDeOlts {
     public record Tarjeta(String tarjeta, long total, long enLinea) {
     }
 
-    public record Marca(String marca, long total, long enLinea) {
+    /** @param migradas con TR069_INTERNET/OTHER según GenieACS; null si GenieACS no respondió */
+    public record Marca(String marca, long total, long enLinea, Long migradas) {
     }
 
     /**
@@ -129,7 +130,7 @@ public class EstadoDeOlts {
                     .entrySet().stream()
                     .map(e -> new Tarjeta(e.getKey(), e.getValue().size(), e.getValue().stream().filter(OnuCandidate::enLinea).count()))
                     .toList();
-            List<Marca> marcas = porMarca(onus);
+            List<Marca> marcas = porMarca(onus, yaMigradas);
             long conVlan = onus.stream().filter(this::tieneGestion).count();
             long conVlanEnLinea = onus.stream().filter(o -> o.enLinea() && tieneGestion(o)).count();
             Long migradasOlt = yaMigradas == null ? null : onus.stream().filter(o -> yaMigradas.contains(
@@ -150,7 +151,7 @@ public class EstadoDeOlts {
                 resultado.stream().map(Olt::pendientes).filter(Objects::nonNull).mapToLong(Long::longValue).sum(),
                 resultado.stream().mapToLong(Olt::conVlanGestion).sum(),
                 yaMigradas == null ? null : resultado.stream().map(Olt::migradas).filter(Objects::nonNull).mapToLong(Long::longValue).sum());
-        return new Estado(reloj.instant(), destino, vlanGestion, totales, porMarca(todas), resultado);
+        return new Estado(reloj.instant(), destino, vlanGestion, totales, porMarca(todas, yaMigradas), resultado);
     }
 
     /** La gestión del procedimiento del NOC: IP de gestión por DHCP en la VLAN de gestión (46). */
@@ -160,13 +161,19 @@ public class EstadoDeOlts {
     }
 
     /** Total y en línea por marca, de la que más tiene a la que menos. */
-    private static List<Marca> porMarca(List<OnuCandidate> onus) {
+    private static List<Marca> porMarca(List<OnuCandidate> onus, java.util.Set<String> yaMigradas) {
         return onus.stream()
                 .collect(Collectors.groupingBy(o -> o.marca() == null ? "Desconocida" : o.marca(), Collectors.toList()))
                 .entrySet().stream()
-                .map(e -> new Marca(e.getKey(), e.getValue().size(), e.getValue().stream().filter(OnuCandidate::enLinea).count()))
+                .map(e -> new Marca(e.getKey(), e.getValue().size(), e.getValue().stream().filter(OnuCandidate::enLinea).count(),
+                        yaMigradas == null ? null : e.getValue().stream().filter(o -> esMigrada(o, yaMigradas)).count()))
                 .sorted(Comparator.comparingLong(Marca::total).reversed())
                 .toList();
+    }
+
+    private static boolean esMigrada(OnuCandidate o, java.util.Set<String> yaMigradas) {
+        return yaMigradas.contains(com.guajiranet.migradoronu.conciliacion.dominio.FormatoSn.normalizar(o.rawSn())
+                .orElse(o.rawSn().toUpperCase(java.util.Locale.ROOT)));
     }
 
     private Optional<Map<String, String>> leerPerfiles(String codigo) {

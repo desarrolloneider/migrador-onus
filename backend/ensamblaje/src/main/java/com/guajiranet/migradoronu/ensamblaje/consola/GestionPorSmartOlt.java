@@ -42,13 +42,31 @@ public class GestionPorSmartOlt implements GestionSmartOltPort {
             Optional<JsonNode> r = registros.stream().filter(x -> forma.equalsIgnoreCase(texto(x, "sn"))).findFirst();
             if (r.isPresent()) {
                 JsonNode o = r.get();
-                String id = Optional.ofNullable(texto(o, "unique_external_id")).orElse(texto(o, "sn"));
+                // Sin External ID queda null: SmartOLT no acepta el SN en su lugar ("specify a valid ONU external ID").
+                String id = texto(o, "unique_external_id");
                 String vlan = texto(o, "mgmt_ip_vlan");
                 return Optional.of(new EstadoGestionOnu(id, "online".equalsIgnoreCase(texto(o, "status")), texto(o, "mgmt_ip_mode"),
                         vlan == null ? null : Integer.valueOf(vlan), texto(o, "mgmt_ip_address"), "Enabled".equalsIgnoreCase(texto(o, "tr069"))));
             }
         }
         return Optional.empty();
+    }
+
+    @Override
+    public String ponerExternalIdIgualAlSn(String sn) {
+        for (String forma : formas(sn)) {
+            Optional<JsonNode> r = cliente().onusPorSn(forma).stream().filter(x -> forma.equalsIgnoreCase(texto(x, "sn"))).findFirst();
+            if (r.isPresent()) {
+                String existente = texto(r.get(), "unique_external_id");
+                if (existente != null && !existente.isBlank()) {
+                    return existente;
+                }
+                String snSmartOlt = texto(r.get(), "sn");
+                cliente().ponerExternalId(texto(r.get(), "olt_id"), snSmartOlt, snSmartOlt);
+                return snSmartOlt;
+            }
+        }
+        throw new IllegalStateException("SmartOLT no tiene la ONU " + sn + ".");
     }
 
     @Override

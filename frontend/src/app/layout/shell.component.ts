@@ -68,6 +68,10 @@ interface EnlaceMenu {
               <mat-icon matListItemIcon>settings_ethernet</mat-icon>
               <span matListItemTitle>VLAN 46 activa</span>
             </a>
+            <a mat-list-item routerLink="/sin-external-id" routerLinkActive #sinid="routerLinkActive" [activated]="sinid.isActive">
+              <mat-icon matListItemIcon>badge</mat-icon>
+              <span matListItemTitle>Sin External ID</span>
+            </a>
           </mat-nav-list>
         }
       </mat-sidenav>
@@ -103,6 +107,7 @@ interface EnlaceMenu {
             @if (auth.esAdministrador()) {
               <a mat-menu-item routerLink="/usuarios"><mat-icon>manage_accounts</mat-icon> Gestión de usuarios</a>
               <a mat-menu-item routerLink="/vlan-gestion"><mat-icon>settings_ethernet</mat-icon> VLAN 46 activa</a>
+              <a mat-menu-item routerLink="/sin-external-id"><mat-icon>badge</mat-icon> Sin External ID</a>
             }
             <button mat-menu-item (click)="cerrarSesion()"><mat-icon>logout</mat-icon> Cerrar sesión</button>
           </mat-menu>

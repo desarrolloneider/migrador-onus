@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, signal } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCheckboxModule } from '@angular/material/checkbox';
@@ -6,6 +6,7 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatSelectModule } from '@angular/material/select';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { Router } from '@angular/router';
 import { mensajeDeError } from '../../core/api/errores';
 import { HoraColombiaPipe } from '../../shared/formato/formato.pipes';
@@ -16,6 +17,10 @@ interface OnuConVlan {
   ipGestion: string | null; repetidaEn: number; ultimoReporteAcs: string | null;
 }
 
+interface EstadoDirecto {
+  enCurso: boolean; total: number; hechas: number; yaSinVlan: number; errores: { sn: string; motivo: string }[];
+}
+
 /**
  * Solo administradores: ONUs con la VLAN 46 activa, con su IP de gestión (repetidas marcadas), para devolverlas con un
  * lote "Quitar VLAN 46" (sin VLAN 46 ni TR-069 en SmartOLT y con GUAJIRANET1 en la OLT).
@@ -23,7 +28,7 @@ interface OnuConVlan {
 @Component({
   selector: 'app-vlan-gestion',
   standalone: true,
-  imports: [MatButtonModule, MatCheckboxModule, MatFormFieldModule, MatIconModule, MatProgressBarModule, MatSelectModule, HoraColombiaPipe],
+  imports: [MatButtonModule, MatCheckboxModule, MatFormFieldModule, MatIconModule, MatProgressBarModule, MatSelectModule, MatTooltipModule, HoraColombiaPipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="pagina">
@@ -34,10 +39,27 @@ interface OnuConVlan {
             no llegan a GenieACS. Escoge las que quieras devolver: el lote les quita la VLAN 46 y el TR-069 en SmartOLT y les
             vuelve a poner GUAJIRANET1 en la OLT. No las reinicia.</p>
         </div>
-        <button mat-flat-button type="button" [disabled]="!seleccionadas().size || armando()" (click)="armar()">
-          <mat-icon>undo</mat-icon> Quitar VLAN 46 a {{ seleccionadas().size }}
-        </button>
+        <div class="acciones">
+          <button mat-stroked-button type="button" [disabled]="!seleccionadas().size || directo()?.enCurso" (click)="quitarDirecto()"
+                  matTooltip="Solo SmartOLT, sin lote ni ejecutor (como el arreglo de SAN_JUAN). No devuelve GUAJIRANET1.">
+            <mat-icon>bolt</mat-icon> Quitar ya, sin lote ({{ seleccionadas().size }})
+          </button>
+          <button mat-flat-button type="button" [disabled]="!seleccionadas().size || armando()" (click)="armar()">
+            <mat-icon>undo</mat-icon> Lote: quitar VLAN 46 y GUAJIRANET1 ({{ seleccionadas().size }})
+          </button>
+        </div>
       </header>
+      @if (directo(); as d) {
+        @if (d.total) {
+          <section class="tarjeta">
+            <p><strong>{{ d.enCurso ? 'Quitando VLAN 46 sin lote…' : 'Terminó la quitada sin lote.' }}</strong>
+              {{ d.hechas }} quitadas · {{ d.yaSinVlan }} ya no la tenían · {{ d.errores.length }} con error · de {{ d.total }}</p>
+            @if (d.enCurso) { <mat-progress-bar mode="determinate" [value]="(d.hechas + d.yaSinVlan + d.errores.length) * 100 / d.total" /> }
+            @for (e of d.errores; track e.sn) { <p class="aviso aviso-fallida"><mat-icon>error_outline</mat-icon> <span class="mono">{{ e.sn }}</span> {{ e.motivo }}</p> }
+            @if (!d.enCurso) { <p class="resumen">Quedaron sin VLAN 46 pero SmartOLT les quitó el perfil TR-069: devuélveles GUAJIRANET1 con un lote "Los 3 pasos".</p> }
+          </section>
+        }
+      }
 
       <section class="tarjeta">
         <div class="filtros">
@@ -78,6 +100,7 @@ interface OnuConVlan {
     </div>
   `,
   styles: `
+    .acciones { display: flex; gap: 8px; flex-wrap: wrap; }
     .encabezado { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; align-items: flex-start; }
     .filtros { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
     .resumen { color: var(--mat-sys-on-surface-variant); font-size: 13px; }
@@ -104,7 +127,15 @@ export class VlanGestionComponent {
   protected readonly visibles = computed(() => this.onus().filter((o) =>
     (!this.olt() || o.olt === this.olt()) && (!this.soloRepetidas() || o.repetidaEn > 1)));
 
+  protected readonly directo = signal<EstadoDirecto | null>(null);
+  private sondeo: ReturnType<typeof setInterval> | null = null;
+
   constructor() {
+    this.http.get<EstadoDirecto>('/api/v1/vlan-gestion/quitar-directo').subscribe({ next: (d) => {
+      this.directo.set(d);
+      if (d.enCurso) this.seguirDirecto();
+    } });
+    inject(DestroyRef).onDestroy(() => { if (this.sondeo) clearInterval(this.sondeo); });
     this.cargar();
   }
 
@@ -141,6 +172,28 @@ export class VlanGestionComponent {
   }
 
   /** Un lote por OLT: con varias OLT escogidas, se pide escoger una. */
+  /** Sin lote ni ejecutor: solo SmartOLT, de a una con pausa, en el servidor. */
+  protected quitarDirecto(): void {
+    const sns = [...this.seleccionadas()];
+    if (!confirm(`Quitar la VLAN 46 en SmartOLT a ${sns.length} ONU(s), ya, sin lote? No les devuelve GUAJIRANET1.`)) return;
+    this.http.post<EstadoDirecto>('/api/v1/vlan-gestion/quitar-directo', { sns }).subscribe({
+      next: (d) => { this.directo.set(d); this.seguirDirecto(); },
+      error: (e: unknown) => this.error.set(mensajeDeError(e)),
+    });
+  }
+
+  private seguirDirecto(): void {
+    if (this.sondeo) clearInterval(this.sondeo);
+    this.sondeo = setInterval(() => this.http.get<EstadoDirecto>('/api/v1/vlan-gestion/quitar-directo').subscribe((d) => {
+      this.directo.set(d);
+      if (!d.enCurso && this.sondeo) {
+        clearInterval(this.sondeo);
+        this.sondeo = null;
+        this.cargar();
+      }
+    }), 3000);
+  }
+
   protected armar(): void {
     const escogidas = this.onus().filter((o) => this.seleccionadas().has(o.sn));
     const olts = new Set(escogidas.map((o) => o.olt));

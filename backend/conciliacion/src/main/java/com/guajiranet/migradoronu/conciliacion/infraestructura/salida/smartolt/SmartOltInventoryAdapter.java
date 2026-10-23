@@ -185,7 +185,28 @@ public class SmartOltInventoryAdapter implements OnuInventoryPort {
         return inventario;
     }
 
+    /** Las ONUs (SN en formato común) que en la última descarga venían sin External ID en SmartOLT. */
+    private final java.util.Set<String> sinExternalId = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+    @Override
+    public java.util.Set<String> sinExternalId() {
+        return java.util.Set.copyOf(sinExternalId);
+    }
+
     private List<OnuCandidate> convertir(List<JsonNode> registros) {
+        for (JsonNode r : registros) {
+            String sn = texto(r, "sn");
+            if (sn == null) {
+                continue;
+            }
+            String comun = FormatoSn.normalizar(sn).orElse(sn.toUpperCase(Locale.ROOT));
+            String id = texto(r, "unique_external_id");
+            if (id == null || id.isBlank()) {
+                sinExternalId.add(comun);
+            } else {
+                sinExternalId.remove(comun);
+            }
+        }
         Map<String, String> olts = olts();
         return registros.stream().map(r -> convertir(r, olts)).flatMap(Optional::stream).toList();
     }

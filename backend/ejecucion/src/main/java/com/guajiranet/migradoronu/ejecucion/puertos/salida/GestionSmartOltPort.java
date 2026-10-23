@@ -22,4 +22,12 @@ public interface GestionSmartOltPort {
 
     /** IP de gestión en Inactiva (quita la VLAN de gestión). SmartOLT también le quita el perfil TR-069 en la OLT. */
     void desactivarGestion(String idExterno);
+
+    /**
+     * A una ONU sin External ID le pone uno igual a su SN como lo muestra SmartOLT (HWTCFCA40DB0, sin guion). Devuelve el
+     * External ID que quedó.
+     */
+    default String ponerExternalIdIgualAlSn(String sn) {
+        throw new UnsupportedOperationException("Poner el External ID no está disponible");
+    }
 }

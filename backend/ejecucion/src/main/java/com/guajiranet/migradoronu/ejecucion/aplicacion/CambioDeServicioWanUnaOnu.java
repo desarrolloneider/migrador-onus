@@ -436,6 +436,11 @@ public class CambioDeServicioWanUnaOnu {
         try {
             Optional<EstadoGestionOnu> g = smartOlt.leer(t.sn());
             if (g.isPresent() && g.get().modo() != null && !g.get().modo().equalsIgnoreCase("Inactive")) {
+                if (g.get().idExterno() == null || g.get().idExterno().isBlank()) {
+                    r.paso("P07", "SmartOLT: IP de gestión Inactiva", "sin External ID", false, "La ONU no tiene External ID en SmartOLT.");
+                    return new String[] {"P07", "EXC_SIN_EXTERNAL_ID",
+                            "SmartOLT no deja quitarle la VLAN 46: la ONU no tiene External ID (pónselo en SmartOLT y quítala a mano)."};
+                }
                 smartOlt.desactivarGestion(g.get().idExterno());
                 r.paso("P07", "SmartOLT: IP de gestión Inactiva (" + g.get().idExterno() + ")", "OK", true, "VLAN de gestión y TR-069 quitados en SmartOLT.");
             } else {

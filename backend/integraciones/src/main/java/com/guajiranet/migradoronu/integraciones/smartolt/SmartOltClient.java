@@ -107,6 +107,20 @@ public class SmartOltClient {
         }
     }
 
+    /**
+     * Pone el External ID de una ONU que no lo tiene, buscándola por OLT y SN (sin External ID no hay otra forma de
+     * nombrarla): POST /api/onu/update_unique_external_id_by_sn con olt_id, sn y onu_external_id.
+     */
+    public void ponerExternalId(String oltId, String sn, String externalId) {
+        JsonNode r = http.postFormulario("/api/onu/update_unique_external_id_by_sn",
+                Map.of("olt_id", oltId, "sn", sn, "onu_external_id", externalId));
+        JsonNode estado = r == null ? null : r.get("status");
+        if (estado == null || !estado.asBoolean()) {
+            JsonNode error = r == null ? null : (r.has("error") ? r.get("error") : r.get("response"));
+            throw new ErrorDeIntegracion(SISTEMA, "SmartOLT no puso el External ID: " + (error == null ? "sin detalle" : error.asString()), null);
+        }
+    }
+
     /** Una página del inventario. Sirve también para el diagnóstico con tamaño 1. */
     public List<JsonNode> pagina(Map<String, ?> filtros, int pagina, int tamano) {
         Map<String, Object> parametros = new LinkedHashMap<>(filtros);

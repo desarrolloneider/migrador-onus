@@ -7,6 +7,11 @@ import com.guajiranet.migradoronu.conciliacion.dominio.OnuCandidate;
 /** Lectura de ONUs en SmartOLT (arquitectura 9.6, PC-09, PC-32). Solo lectura (RN-03). */
 public interface OnuInventoryPort {
 
+    /** Las ONUs (SN en formato común) que no tienen External ID en SmartOLT, según la última copia del inventario. */
+    default java.util.Set<String> sinExternalId() {
+        return java.util.Set.of();
+    }
+
     /**
      * Todas las ONUs de la marca con los filtros dados, con descarga paginada comprobada completa; si no lo está,
      * lanza {@code IncompleteDownloadException} (RN-39). Los filtros en {@code null} no filtran.

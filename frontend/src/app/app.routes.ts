@@ -77,6 +77,12 @@ export const routes: Routes = [
         loadComponent: () => import('./features/auditoria/pages/auditoria/auditoria.component').then((m) => m.AuditoriaComponent),
       },
       {
+        path: 'sin-external-id',
+        canActivate: [moduloGuard], data: { administrador: true },
+        title: 'Sin External ID' + SUFIJO,
+        loadComponent: () => import('./features/vlan-gestion/sin-external-id.component').then((m) => m.SinExternalIdComponent),
+      },
+      {
         path: 'vlan-gestion',
         canActivate: [moduloGuard], data: { administrador: true },
         title: 'VLAN 46 activa' + SUFIJO,

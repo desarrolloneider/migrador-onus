@@ -41,6 +41,22 @@ public class VlanGestionController {
         this.genie = genie;
     }
 
+    public record OnuSinIdDto(String sn, String olt, String tarjeta, int pon, int onuId, boolean enLinea, String modelo) {
+    }
+
+    /** Las ONUs sin External ID en SmartOLT (sin él, SmartOLT no les acepta cambios). De la copia del inventario. */
+    @GetMapping("/sin-external-id")
+    public List<OnuSinIdDto> sinExternalId(@RequestParam(required = false) String olt) {
+        java.util.Set<String> sin = smartOlt.sinExternalId();
+        return smartOlt.listOnus(null, olt == null || olt.isBlank() ? null : olt, null, null).stream()
+                .filter(o -> sin.contains(FormatoSn.normalizar(o.rawSn()).orElse(o.rawSn().toUpperCase(Locale.ROOT))))
+                .map(o -> new OnuSinIdDto(FormatoSn.normalizar(o.rawSn()).orElse(o.rawSn()), o.position().oltCodigo(), o.position().tarjeta(),
+                        o.position().pon(), o.position().onuId(), o.enLinea(), o.modelo()))
+                .sorted(Comparator.comparing(OnuSinIdDto::olt).thenComparing(OnuSinIdDto::tarjeta).thenComparingInt(OnuSinIdDto::pon)
+                        .thenComparingInt(OnuSinIdDto::onuId))
+                .toList();
+    }
+
     @GetMapping
     public List<OnuConVlanDto> conVlanActiva(@RequestParam(required = false) String olt) {
         List<OnuCandidate> conVlan = smartOlt.listOnus(null, olt == null || olt.isBlank() ? null : olt, null, null).stream()
