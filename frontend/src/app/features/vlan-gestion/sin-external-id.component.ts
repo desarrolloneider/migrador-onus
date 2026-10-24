@@ -22,7 +22,7 @@ interface EstadoTrabajo { enCurso: boolean; total: number; hechas: number; error
       <header class="encabezado">
         <div>
           <h1>Sin External ID</h1>
-          <p class="subtitulo">ONUs que en SmartOLT no tienen "ID externo del ONU". Sin él, SmartOLT no les acepta cambios (VLAN 46,
+          <p class="subtitulo">ONUs en línea que en SmartOLT no tienen "ID externo del ONU". Sin él, SmartOLT no les acepta cambios (VLAN 46,
             TR-069) y fallan con "Please specify a valid ONU external ID". El botón les pone uno igual a su SN como lo muestra
             SmartOLT, sin guion (por ejemplo HWTCFCA40DB0). No cambia nada más. La lista sale de la copia del inventario de SmartOLT
             (se renueva cada 15 minutos).</p>
@@ -55,13 +55,13 @@ interface EstadoTrabajo { enCurso: boolean; total: number; hechas: number; error
         </div>
         @if (cargando()) { <mat-progress-bar mode="indeterminate" /> }
         @if (error()) { <p class="aviso aviso-error" role="alert"><mat-icon>error</mat-icon> {{ error() }}</p> }
-        <p class="resumen">{{ onus().length }} sin External ID · {{ seleccionadas().size }} escogidas.</p>
+        <p class="resumen">{{ onus().length }} en línea sin External ID (las fuera de línea no se muestran) · {{ seleccionadas().size }} escogidas.</p>
         <table class="tabla">
           <thead><tr><th></th><th>SN</th><th>OLT · posición</th><th>Modelo</th><th>Estado</th></tr></thead>
           <tbody>
-            @for (o of visibles(); track o.sn) {
+            @for (o of visibles(); track o.sn + o.olt) {
               <tr>
-                <td><mat-checkbox [checked]="seleccionadas().has(o.sn)" (change)="alternar(o.sn)" /></td>
+                <td><mat-checkbox [checked]="seleccionadas().has(o.sn + '|' + o.olt)" (change)="alternar(o.sn + '|' + o.olt)" /></td>
                 <td class="mono">{{ o.sn }}</td>
                 <td>{{ o.olt }} · {{ o.tarjeta }}/{{ o.pon }} ONT {{ o.onuId }}</td>
                 <td>{{ o.modelo ?? '—' }}</td>
@@ -119,7 +119,7 @@ export class SinExternalIdComponent {
   }
 
   protected seleccionarVisibles(): void {
-    this.seleccionadas.set(new Set(this.visibles().map((o) => o.sn)));
+    this.seleccionadas.set(new Set(this.visibles().map((o) => o.sn + '|' + o.olt)));
   }
 
   protected limpiar(): void {
@@ -127,9 +127,9 @@ export class SinExternalIdComponent {
   }
 
   protected poner(): void {
-    const sns = [...this.seleccionadas()];
-    if (!confirm(`Poner External ID (igual a su SN) a ${sns.length} ONU(s) en SmartOLT?`)) return;
-    this.http.post<EstadoTrabajo>(this.url, { sns }).subscribe({
+    if (!confirm(`Poner External ID (igual a su SN) a ${this.seleccionadas().size} ONU(s) en SmartOLT?`)) return;
+    const onus = this.onus().filter((o) => this.seleccionadas().has(o.sn + '|' + o.olt)).map((o) => ({ sn: o.sn, olt: o.olt }));
+    this.http.post<EstadoTrabajo>(this.url, { onus }).subscribe({
       next: (d) => { this.trabajo.set(d); this.seguir(); },
       error: (e: unknown) => this.error.set(mensajeDeError(e)),
     });

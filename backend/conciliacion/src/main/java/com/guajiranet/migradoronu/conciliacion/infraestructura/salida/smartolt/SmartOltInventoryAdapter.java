@@ -185,7 +185,7 @@ public class SmartOltInventoryAdapter implements OnuInventoryPort {
         return inventario;
     }
 
-    /** Las ONUs (SN en formato común) que en la última descarga venían sin External ID en SmartOLT. */
+    /** Los registros (OLT|tarjeta|pon|onu) que en la última descarga venían sin External ID en SmartOLT. */
     private final java.util.Set<String> sinExternalId = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
     @Override
@@ -194,21 +194,29 @@ public class SmartOltInventoryAdapter implements OnuInventoryPort {
     }
 
     private List<OnuCandidate> convertir(List<JsonNode> registros) {
-        for (JsonNode r : registros) {
-            String sn = texto(r, "sn");
-            if (sn == null) {
+        Map<String, String> olts = olts();
+        List<OnuCandidate> r = new java.util.ArrayList<>();
+        for (JsonNode registro : registros) {
+            Optional<OnuCandidate> onu = convertir(registro, olts);
+            if (onu.isEmpty()) {
                 continue;
             }
-            String comun = FormatoSn.normalizar(sn).orElse(sn.toUpperCase(Locale.ROOT));
-            String id = texto(r, "unique_external_id");
+            r.add(onu.get());
+            // Por posición, no por SN: el mismo SN puede estar en dos OLT (OPTI472D5D18 en ALBANIA y en NEIVA).
+            String clave = clavePosicion(onu.get().position());
+            String id = texto(registro, "unique_external_id");
             if (id == null || id.isBlank()) {
-                sinExternalId.add(comun);
+                sinExternalId.add(clave);
             } else {
-                sinExternalId.remove(comun);
+                sinExternalId.remove(clave);
             }
         }
-        Map<String, String> olts = olts();
-        return registros.stream().map(r -> convertir(r, olts)).flatMap(Optional::stream).toList();
+        return r;
+    }
+
+    /** OLT|tarjeta|pon|onu: identifica un registro de SmartOLT aunque el SN esté repetido. */
+    public static String clavePosicion(OnuPosition p) {
+        return p.oltCodigo().toUpperCase(Locale.ROOT) + "|" + p.tarjeta() + "|" + p.pon() + "|" + p.onuId();
     }
 
     /** Un registro sin SN o sin posición completa no se puede usar: se descarta, nunca se completa con supuestos (RN-14). */

@@ -53,20 +53,46 @@ public class GestionPorSmartOlt implements GestionSmartOltPort {
     }
 
     @Override
-    public String ponerExternalIdIgualAlSn(String sn) {
+    public String ponerExternalIdIgualAlSn(String sn, String oltCodigo) {
         for (String forma : formas(sn)) {
-            Optional<JsonNode> r = cliente().onusPorSn(forma).stream().filter(x -> forma.equalsIgnoreCase(texto(x, "sn"))).findFirst();
+            List<JsonNode> todos = cliente().onusPorSn(forma).stream().filter(x -> forma.equalsIgnoreCase(texto(x, "sn"))).toList();
+            List<JsonNode> registros = todos.stream()
+                    .filter(x -> oltCodigo == null || oltCodigo.equalsIgnoreCase(texto(x, "olt_name"))).toList();
+            if (registros.size() > 1) {
+                throw new IllegalStateException("El SN " + sn + " está registrado " + registros.size() + " veces en SmartOLT"
+                        + (oltCodigo == null ? "" : " en " + oltCodigo) + ": no se adivina cuál es.");
+            }
+            Optional<JsonNode> r = registros.stream().findFirst();
             if (r.isPresent()) {
                 String existente = texto(r.get(), "unique_external_id");
                 if (existente != null && !existente.isBlank()) {
                     return existente;
                 }
                 String snSmartOlt = texto(r.get(), "sn");
-                cliente().ponerExternalId(texto(r.get(), "olt_id"), snSmartOlt, snSmartOlt);
-                return snSmartOlt;
+                // El mismo SN registrado en otra OLT puede tener ya ese External ID (HWTC7F0153B0: el registro viejo fuera de
+                // línea en OLT_SAN_JUAN y el bueno en OLT_SAN_JUAN_2). SmartOLT exige que sea único: si el otro está fuera de
+                // línea, se le cambia a SN-OLT para dejarle el SN al que está en línea. Si está en línea, no se adivina.
+                for (JsonNode otro : todos) {
+                    if (otro == r.get() || !snSmartOlt.equalsIgnoreCase(texto(otro, "unique_external_id"))) {
+                        continue;
+                    }
+                    if ("online".equalsIgnoreCase(texto(otro, "status"))) {
+                        throw new IllegalStateException("El External ID " + snSmartOlt + " ya lo tiene otro registro en línea del mismo SN ("
+                                + texto(otro, "olt_name") + "): revísalo en SmartOLT.");
+                    }
+                    String nuevo = valido(snSmartOlt + "-" + texto(otro, "olt_name"));
+                    cliente().cambiarExternalId(snSmartOlt, nuevo);
+                }
+                cliente().ponerExternalId(texto(r.get(), "olt_id"), snSmartOlt, valido(snSmartOlt));
+                return valido(snSmartOlt);
             }
         }
         throw new IllegalStateException("SmartOLT no tiene la ONU " + sn + ".");
+    }
+
+    /** SmartOLT solo acepta letras, números, puntos y guiones en el External ID: lo demás (como el _ de OLT_SAN_JUAN) pasa a guion. */
+    static String valido(String externalId) {
+        return externalId.replaceAll("[^A-Za-z0-9.-]", "-");
     }
 
     @Override

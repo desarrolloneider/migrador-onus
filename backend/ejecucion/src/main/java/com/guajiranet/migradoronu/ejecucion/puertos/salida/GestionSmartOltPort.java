@@ -28,6 +28,14 @@ public interface GestionSmartOltPort {
      * External ID que quedó.
      */
     default String ponerExternalIdIgualAlSn(String sn) {
+        return ponerExternalIdIgualAlSn(sn, null);
+    }
+
+    /**
+     * Igual, eligiendo el registro de esa OLT: el mismo SN puede estar registrado en dos OLT (una en línea y otra no).
+     * Con {@code oltCodigo} null, solo si el SN tiene un único registro.
+     */
+    default String ponerExternalIdIgualAlSn(String sn, String oltCodigo) {
         throw new UnsupportedOperationException("Poner el External ID no está disponible");
     }
 }

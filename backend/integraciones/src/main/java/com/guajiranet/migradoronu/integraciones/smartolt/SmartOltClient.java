@@ -121,6 +121,17 @@ public class SmartOltClient {
         }
     }
 
+    /** Cambia el External ID de una ONU: POST /api/onu/update_unique_external_id/{id actual} con onu_external_id (el nuevo). */
+    public void cambiarExternalId(String actual, String nuevo) {
+        JsonNode r = http.postFormulario("/api/onu/update_unique_external_id/" + java.net.URLEncoder.encode(actual, java.nio.charset.StandardCharsets.UTF_8),
+                Map.of("onu_external_id", nuevo));
+        JsonNode estado = r == null ? null : r.get("status");
+        if (estado == null || !estado.asBoolean()) {
+            JsonNode error = r == null ? null : (r.has("error") ? r.get("error") : r.get("response"));
+            throw new ErrorDeIntegracion(SISTEMA, "SmartOLT no cambió el External ID del registro viejo: " + (error == null ? "sin detalle" : error.asString()), null);
+        }
+    }
+
     /** Una página del inventario. Sirve también para el diagnóstico con tamaño 1. */
     public List<JsonNode> pagina(Map<String, ?> filtros, int pagina, int tamano) {
         Map<String, Object> parametros = new LinkedHashMap<>(filtros);

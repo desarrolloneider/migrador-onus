@@ -49,7 +49,9 @@ public class VlanGestionController {
     public List<OnuSinIdDto> sinExternalId(@RequestParam(required = false) String olt) {
         java.util.Set<String> sin = smartOlt.sinExternalId();
         return smartOlt.listOnus(null, olt == null || olt.isBlank() ? null : olt, null, null).stream()
-                .filter(o -> sin.contains(FormatoSn.normalizar(o.rawSn()).orElse(o.rawSn().toUpperCase(Locale.ROOT))))
+                // Solo las en línea (pedido del 23 de octubre): fuera de línea no se toca.
+                .filter(o -> o.enLinea() && sin.contains(o.position().oltCodigo().toUpperCase(Locale.ROOT) + "|" + o.position().tarjeta()
+                        + "|" + o.position().pon() + "|" + o.position().onuId()))
                 .map(o -> new OnuSinIdDto(FormatoSn.normalizar(o.rawSn()).orElse(o.rawSn()), o.position().oltCodigo(), o.position().tarjeta(),
                         o.position().pon(), o.position().onuId(), o.enLinea(), o.modelo()))
                 .sorted(Comparator.comparing(OnuSinIdDto::olt).thenComparing(OnuSinIdDto::tarjeta).thenComparingInt(OnuSinIdDto::pon)

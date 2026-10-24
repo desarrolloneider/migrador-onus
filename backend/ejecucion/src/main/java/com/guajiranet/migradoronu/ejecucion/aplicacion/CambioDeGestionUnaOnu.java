@@ -88,7 +88,7 @@ public class CambioDeGestionUnaOnu {
                 r.paso("SIM", "SmartOLT: External ID = SN", "", true, "Simulación: no se mandó.");
             } else {
                 try {
-                    String id = smartOlt.ponerExternalIdIgualAlSn(t.sn());
+                    String id = smartOlt.ponerExternalIdIgualAlSn(t.sn(), t.oltCodigo());
                     r.paso("P04", "SmartOLT: External ID = " + id + " (update_unique_external_id_by_sn)", "OK", true,
                             "La ONU no tenía External ID en SmartOLT: se le puso su SN.");
                     a = new EstadoGestionOnu(id, a.enLinea(), a.modo(), a.vlan(), a.ip(), a.tr069());

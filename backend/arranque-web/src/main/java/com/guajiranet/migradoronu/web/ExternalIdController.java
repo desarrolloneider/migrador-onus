@@ -34,7 +34,11 @@ public class ExternalIdController {
 
     private static final int MAXIMO = 1000;
 
-    public record Pedido(List<String> sns) {
+    /** Cada ONU con su OLT: el mismo SN puede estar en dos OLT. */
+    public record Onu(String sn, String olt) {
+    }
+
+    public record Pedido(List<Onu> onus) {
     }
 
     public record Error(String sn, String motivo) {
@@ -62,7 +66,7 @@ public class ExternalIdController {
         if (estado.enCurso()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Ya se están poniendo External ID: espera a que termine.");
         }
-        List<String> sns = cuerpo == null || cuerpo.sns() == null ? List.of() : cuerpo.sns().stream().distinct().toList();
+        List<Onu> sns = cuerpo == null || cuerpo.onus() == null ? List.of() : cuerpo.onus().stream().distinct().toList();
         if (sns.isEmpty() || sns.size() > MAXIMO) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Escoge entre 1 y " + MAXIMO + " ONUs.");
         }
@@ -72,14 +76,15 @@ public class ExternalIdController {
         return estado;
     }
 
-    private void correr(List<String> sns, long usuarioId, String ip) {
+    private void correr(List<Onu> sns, long usuarioId, String ip) {
         int hechas = 0;
         List<Error> errores = new ArrayList<>();
-        for (String sn : sns) {
+        for (Onu onu : sns) {
+            String sn = onu.sn();
             String motivo = null;
             String id = null;
             try {
-                id = smartOlt.ponerExternalIdIgualAlSn(sn);
+                id = smartOlt.ponerExternalIdIgualAlSn(sn, onu.olt());
                 hechas++;
             } catch (RuntimeException e) {
                 motivo = String.valueOf(e.getMessage());
